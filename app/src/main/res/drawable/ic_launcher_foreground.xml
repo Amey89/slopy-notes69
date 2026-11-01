@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Note / Document Sheet with Drop Shadow -->
+    <path
+        android:pathData="M32,29 C32,25 35,22 39,22 L67,22 C71,22 74,25 74,29 L74,77 C74,81 71,84 67,84 L39,84 C35,84 32,81 32,77 Z"
+        android:fillColor="#15000000" />
+    <path
+        android:pathData="M30,27 C30,23 33,20 37,20 L67,20 C71,20 74,23 74,27 L74,77 C74,81 71,84 67,84 L37,84 C33,84 30,81 30,77 Z"
+        android:fillColor="#F8FAFC" />
+
+    <!-- Notebook spine / Header Bar -->
+    <path
+        android:pathData="M30,27 C30,23 33,20 37,20 L67,20 C71,20 74,23 74,27 L74,34 L30,34 Z"
+        android:fillColor="#6366F1" />
+
+    <!-- Document Lines -->
+    <path
+        android:pathData="M38,42 L66,42"
+        android:strokeColor="#CBD5E1"
+        android:strokeWidth="3.2"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M38,50 L60,50"
+        android:strokeColor="#CBD5E1"
+        android:strokeWidth="3.2"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M38,58 L52,58"
+        android:strokeColor="#CBD5E1"
+        android:strokeWidth="3.2"
+        android:strokeLineCap="round" />
+
+    <!-- Checkmark Badge (Task Completed) -->
+    <path
+        android:pathData="M68,68m-13,0a13,13 0,1,1 26,0a13,13 0,1,1 -26,0"
+        android:fillColor="#10B981" />
+    <path
+        android:pathData="M62.5,68 L66,71.5 L73.5,64"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <!-- Notification / Reminder Bell Dot -->
+    <path
+        android:pathData="M70,22m-5,0a5,5 0,1,1 10,0a5,5 0,1,1 -10,0"
+        android:fillColor="#F59E0B" />
+</vector>

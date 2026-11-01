@@ -1,0 +1,8 @@
+{
+  "name": "Remix ZenTask Notes",
+  "description": "A high-performance notes and task manager featuring rich formatting, nested sub-tasks, and interactive full-screen reminders.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

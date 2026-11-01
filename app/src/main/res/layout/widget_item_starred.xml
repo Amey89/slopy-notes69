@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_item_container"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_widget_item"
+    android:orientation="vertical"
+    android:padding="14dp">
+
+    <!-- Header Row: Type badge + Status / Tag -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="6dp">
+
+        <TextView
+            android:id="@+id/widget_item_type"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="⭐ NOTE"
+            android:textColor="#F59E0B"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/widget_item_meta"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:text="#Work"
+            android:textColor="#94A3B8"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <!-- Full Title -->
+    <TextView
+        android:id="@+id/widget_item_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Item Title"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="4dp" />
+
+    <!-- Full Context Content (No truncation, no ellipsize dots) -->
+    <TextView
+        android:id="@+id/widget_item_content"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Full context content displayed here without shortening or cut-offs..."
+        android:textColor="#E2E8F0"
+        android:textSize="12sp"
+        android:lineSpacingExtra="2dp" />
+
+</LinearLayout>
