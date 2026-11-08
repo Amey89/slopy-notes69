@@ -146,7 +146,12 @@ class NotesTasksViewModel(application: Application) : AndroidViewModel(applicati
     // High-performance pre-computed maps (Offloaded from UI thread, reusing in-memory flows)
     val folderNotesCountMap: StateFlow<Map<Long?, Int>> = allNotes.map { notes ->
         val map = notes.groupBy { it.folderId }.mapValues { it.value.size }.toMutableMap()
-        map[FolderEntity.SHARED_LINKS_FOLDER_ID] = notes.count { it.folderId == FolderEntity.SHARED_LINKS_FOLDER_ID }
+        FolderEntity.PermanentSharedLinkSubfolders.forEach { sub ->
+            map[sub.id] = notes.count { it.folderId == sub.id }
+        }
+        map[FolderEntity.SHARED_LINKS_FOLDER_ID] = notes.count {
+            FolderEntity.isSharedLinksFamilyId(it.folderId)
+        }
         map
     }.flowOn(Dispatchers.Default)
      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
@@ -159,9 +164,20 @@ class NotesTasksViewModel(application: Application) : AndroidViewModel(applicati
      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     val subfoldersMap: StateFlow<Map<Long?, List<FolderEntity>>> = allFolders.map { folders ->
-        folders.filter { it.parentFolderId != null }.groupBy { it.parentFolderId }
+        val grouped = folders
+            .filter { it.parentFolderId != null && !FolderEntity.isPermanentFolderId(it.id) }
+            .groupBy { it.parentFolderId }
+            .toMutableMap()
+        val customUnderSharedLinks = grouped[FolderEntity.SHARED_LINKS_FOLDER_ID] ?: emptyList()
+        grouped[FolderEntity.SHARED_LINKS_FOLDER_ID] =
+            FolderEntity.PermanentSharedLinkSubfolders + customUnderSharedLinks
+        grouped
     }.flowOn(Dispatchers.Default)
-     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+     .stateIn(
+         viewModelScope,
+         SharingStarted.WhileSubscribed(5000),
+         mapOf(FolderEntity.SHARED_LINKS_FOLDER_ID to FolderEntity.PermanentSharedLinkSubfolders)
+     )
 
     // Always default to null (All Vault Items) when opening the app
     private val _selectedFolder = MutableStateFlow<FolderEntity?>(null)
@@ -186,9 +202,9 @@ class NotesTasksViewModel(application: Application) : AndroidViewModel(applicati
     val visibleFolders: StateFlow<List<FolderEntity>> = combine(allFolders, _selectedFolder, _activeFilter) { folders, selected, filter ->
         if (selected == null) {
             val baseFolders = when (filter) {
-                SearchFilter.NOTES -> folders.filter { it.parentFolderId == null && it.folderType == "NOTE" }
-                SearchFilter.TASKS, SearchFilter.REMINDERS -> folders.filter { it.parentFolderId == null && it.folderType == "TASK" }
-                else -> folders.filter { it.parentFolderId == null }
+                SearchFilter.NOTES -> folders.filter { it.parentFolderId == null && it.folderType == "NOTE" && !FolderEntity.isPermanentFolderId(it.id) }
+                SearchFilter.TASKS, SearchFilter.REMINDERS -> folders.filter { it.parentFolderId == null && it.folderType == "TASK" && !FolderEntity.isPermanentFolderId(it.id) }
+                else -> folders.filter { it.parentFolderId == null && !FolderEntity.isPermanentFolderId(it.id) }
             }
             val systemFolders = buildList {
                 if (filter in listOf(SearchFilter.ALL, SearchFilter.TASKS, SearchFilter.REMINDERS, SearchFilter.FOLDERS)) {
@@ -199,6 +215,11 @@ class NotesTasksViewModel(application: Application) : AndroidViewModel(applicati
                 }
             }
             systemFolders + baseFolders
+        } else if (selected.id == FolderEntity.SHARED_LINKS_FOLDER_ID) {
+            val customSubfolders = folders.filter {
+                it.parentFolderId == FolderEntity.SHARED_LINKS_FOLDER_ID && !FolderEntity.isPermanentFolderId(it.id)
+            }
+            FolderEntity.PermanentSharedLinkSubfolders + customSubfolders
         } else {
             folders.filter { it.parentFolderId == selected.id }
         }
@@ -227,7 +248,8 @@ class NotesTasksViewModel(application: Application) : AndroidViewModel(applicati
         if (parentId == null) {
             _selectedFolder.value = null
         } else {
-            _selectedFolder.value = allFolders.value.find { it.id == parentId }
+            _selectedFolder.value = FolderEntity.getPermanentFolderById(parentId)
+                ?: allFolders.value.find { it.id == parentId }
         }
     }
 
@@ -277,9 +299,9 @@ class NotesTasksViewModel(application: Application) : AndroidViewModel(applicati
         _selectedTagFilter
     ) { notes, folder, filter, query, tagFilter ->
         val folderFiltered = if (folder != null) {
-            when (folder.id) {
-                FolderEntity.COMPLETED_TASKS_FOLDER_ID -> emptyList() // No notes in completed tasks folder
-                FolderEntity.SHARED_LINKS_FOLDER_ID -> notes.filter { it.folderId == FolderEntity.SHARED_LINKS_FOLDER_ID }
+            when {
+                folder.id == FolderEntity.COMPLETED_TASKS_FOLDER_ID -> emptyList() // No notes in completed tasks folder
+                folder.id == FolderEntity.SHARED_LINKS_FOLDER_ID -> notes.filter { FolderEntity.isSharedLinksFamilyId(it.folderId) }
                 else -> notes.filter { it.folderId == folder.id }
             }
         } else {
@@ -317,9 +339,9 @@ class NotesTasksViewModel(application: Application) : AndroidViewModel(applicati
         _selectedTagFilter
     ) { tasks, folder, filter, query, tagFilter ->
         val folderFiltered = if (folder != null) {
-            when (folder.id) {
-                FolderEntity.COMPLETED_TASKS_FOLDER_ID -> tasks.filter { it.task.isCompleted }
-                FolderEntity.SHARED_LINKS_FOLDER_ID -> emptyList() // No tasks in shared links folder
+            when {
+                folder.id == FolderEntity.COMPLETED_TASKS_FOLDER_ID -> tasks.filter { it.task.isCompleted }
+                FolderEntity.isSharedLinksFamilyId(folder.id) -> emptyList() // No tasks in shared links or its platform subfolders
                 else -> tasks.filter { it.task.folderId == folder.id && !it.task.isCompleted }
             }
         } else {
@@ -754,11 +776,22 @@ class NotesTasksViewModel(application: Application) : AndroidViewModel(applicati
     private val _shareToastEvent = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val shareToastEvent = _shareToastEvent.asSharedFlow()
 
-    fun handleIncomingShare(sharedText: String, subject: String? = null, onComplete: ((NoteEntity) -> Unit)? = null) {
+    fun handleIncomingShare(
+        sharedText: String,
+        subject: String? = null,
+        sourcePackage: String? = null,
+        additionalTags: List<String> = emptyList(),
+        targetSubfolderId: Long? = null,
+        onComplete: ((NoteEntity) -> Unit)? = null
+    ) {
         if (sharedText.isBlank()) return
-        viewModelScope.launch {
+        val appScope = (getApplication<Application>() as NotesTasksApp).appScope
+        appScope.launch {
             try {
-                val metadata = LinkMetadataExtractor.resolve(sharedText, subject)
+                val metadata = LinkMetadataExtractor.resolve(sharedText, subject, sourcePackage)
+                val targetFolder = FolderEntity.getPermanentFolderById(targetSubfolderId ?: metadata.subfolderId)
+                    ?: FolderEntity.resolvePlatformSubfolder(metadata.url, sharedText, sourcePackage)
+
                 val contentMarkdown = buildString {
                     appendLine(metadata.url)
                     if (metadata.description.isNotBlank()) {
@@ -766,35 +799,39 @@ class NotesTasksViewModel(application: Application) : AndroidViewModel(applicati
                         appendLine(metadata.description)
                     }
                     val extraText = sharedText.replace(metadata.url, "").trim().trim('-', ':', '|')
-                    if (extraText.isNotBlank()) {
+                    if (extraText.isNotBlank() && !extraText.equals(metadata.title, ignoreCase = true)) {
                         appendLine()
                         appendLine()
                         appendLine("**Shared text:** $extraText")
                     }
                 }.trim()
 
-                val tagsList = buildList {
-                    add("link")
-                    if (metadata.domain.isNotBlank()) add(metadata.domain.lowercase())
-                    if (metadata.isYouTube) add("video")
-                }.distinct().joinToString(", ")
+                val allTagsMerged = (metadata.suggestedTags + additionalTags)
+                    .map { it.trim().removePrefix("#").lowercase() }
+                    .filter { it.isNotBlank() }
+                    .distinct()
+
+                allTagsMerged.forEach { tagName ->
+                    repository.createTag(tagName, targetFolder.colorIndex)
+                }
 
                 val note = NoteEntity(
-                    title = metadata.title.ifBlank { "Shared Link" },
+                    title = metadata.title.ifBlank { "${targetFolder.name} Link" },
                     content = contentMarkdown,
-                    tags = tagsList,
+                    tags = allTagsMerged.joinToString(", "),
                     imageUris = metadata.imageUrl,
                     isStarred = false,
-                    colorIndex = 2, // Ocean Blue
-                    folderId = FolderEntity.SHARED_LINKS_FOLDER_ID,
+                    colorIndex = targetFolder.colorIndex,
+                    folderId = targetFolder.id,
                     createdAt = System.currentTimeMillis(),
                     updatedAt = System.currentTimeMillis()
                 )
 
-                val noteId = repository.saveNoteWithFolders(note, listOf(FolderEntity.SHARED_LINKS_FOLDER_ID))
+                val folderIds = listOf(targetFolder.id, FolderEntity.SHARED_LINKS_FOLDER_ID).distinct()
+                val noteId = repository.saveNoteWithFolders(note, folderIds)
                 val savedNote = note.copy(id = noteId)
-                selectFolder(FolderEntity.PermanentSharedLinksFolder)
-                _shareToastEvent.tryEmit("Saved to Shared Links: ${savedNote.title}")
+                selectFolder(targetFolder)
+                _shareToastEvent.tryEmit("Saved to Shared Links • ${targetFolder.name}: ${savedNote.title}")
                 NotesTasksAppWidget.notifyWidgetUpdate(getApplication())
                 onComplete?.invoke(savedNote)
             } catch (e: Exception) {
@@ -803,16 +840,129 @@ class NotesTasksViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    /**
+     * Saves a shared link immediately when the user selects tag(s) in the Quick Share sheet,
+     * and if background metadata enrichment is still in-flight, updates the note seamlessly
+     * in the application scope so the user can return to browsing with zero delay.
+     */
+    fun saveQuickSharedLinkAndContinue(
+        sharedText: String,
+        subject: String? = null,
+        sourcePackage: String? = null,
+        resolvedMetadata: com.example.util.LinkMetadata?,
+        customTitle: String,
+        selectedTags: List<String>,
+        targetSubfolderId: Long,
+        onSaved: () -> Unit
+    ) {
+        val appScope = (getApplication<Application>() as NotesTasksApp).appScope
+        val instantMeta = resolvedMetadata ?: LinkMetadataExtractor.resolveInstantPreview(sharedText, subject, sourcePackage)
+        val targetFolder = FolderEntity.getPermanentFolderById(targetSubfolderId)
+            ?: FolderEntity.resolvePlatformSubfolder(instantMeta.url, sharedText, sourcePackage)
+
+        val finalTags = (selectedTags + instantMeta.suggestedTags)
+            .map { it.trim().removePrefix("#").lowercase() }
+            .filter { it.isNotBlank() }
+            .distinct()
+
+        val initialTitle = customTitle.trim().ifBlank { instantMeta.title.ifBlank { "${targetFolder.name} Link" } }
+        val initialContent = buildString {
+            appendLine(instantMeta.url)
+            if (instantMeta.description.isNotBlank()) {
+                appendLine()
+                appendLine(instantMeta.description)
+            }
+            val extraText = sharedText.replace(instantMeta.url, "").trim().trim('-', ':', '|')
+            if (extraText.isNotBlank() && !extraText.equals(initialTitle, ignoreCase = true)) {
+                appendLine()
+                appendLine()
+                appendLine("**Shared text:** $extraText")
+            }
+        }.trim()
+
+        appScope.launch {
+            try {
+                finalTags.forEach { tagName ->
+                    repository.createTag(tagName, targetFolder.colorIndex)
+                }
+
+                val initialNote = NoteEntity(
+                    title = initialTitle,
+                    content = initialContent,
+                    tags = finalTags.joinToString(", "),
+                    imageUris = instantMeta.imageUrl,
+                    isStarred = false,
+                    colorIndex = targetFolder.colorIndex,
+                    folderId = targetFolder.id,
+                    createdAt = System.currentTimeMillis(),
+                    updatedAt = System.currentTimeMillis()
+                )
+                val folderIds = listOf(targetFolder.id, FolderEntity.SHARED_LINKS_FOLDER_ID).distinct()
+                val noteId = repository.saveNoteWithFolders(initialNote, folderIds)
+                selectFolder(targetFolder)
+                NotesTasksAppWidget.notifyWidgetUpdate(getApplication())
+
+                // If network metadata wasn't finished when the user tapped the tag, enrich in background
+                if (resolvedMetadata == null) {
+                    val fullMeta = LinkMetadataExtractor.resolve(sharedText, subject, sourcePackage)
+                    val enrichedFolder = if (targetSubfolderId == instantMeta.subfolderId) {
+                        FolderEntity.getPermanentFolderById(fullMeta.subfolderId) ?: targetFolder
+                    } else {
+                        targetFolder
+                    }
+                    val enrichedTitle = if (customTitle.isNotBlank() && customTitle != instantMeta.title) {
+                        customTitle
+                    } else {
+                        fullMeta.title.ifBlank { initialTitle }
+                    }
+                    val enrichedContent = buildString {
+                        appendLine(fullMeta.url)
+                        if (fullMeta.description.isNotBlank()) {
+                            appendLine()
+                            appendLine(fullMeta.description)
+                        }
+                        val extraText = sharedText.replace(fullMeta.url, "").trim().trim('-', ':', '|')
+                        if (extraText.isNotBlank() && !extraText.equals(enrichedTitle, ignoreCase = true)) {
+                            appendLine()
+                            appendLine()
+                            appendLine("**Shared text:** $extraText")
+                        }
+                    }.trim()
+                    val enrichedNote = initialNote.copy(
+                        id = noteId,
+                        title = enrichedTitle,
+                        content = enrichedContent,
+                        imageUris = fullMeta.imageUrl.ifBlank { initialNote.imageUris },
+                        folderId = enrichedFolder.id,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                    repository.saveNoteWithFolders(
+                        enrichedNote,
+                        listOf(enrichedFolder.id, FolderEntity.SHARED_LINKS_FOLDER_ID).distinct()
+                    )
+                    NotesTasksAppWidget.notifyWidgetUpdate(getApplication())
+                }
+            } catch (_: Exception) {}
+        }
+
+        _shareToastEvent.tryEmit("Saved to Shared Links • ${targetFolder.name}")
+        onSaved()
+    }
+
     fun saveManualLinkWithMetadata(
         url: String,
         title: String,
         description: String,
         imageUrl: String,
         tags: String,
+        subfolderId: Long? = null,
         onComplete: ((NoteEntity) -> Unit)? = null
     ) {
         viewModelScope.launch {
             try {
+                val targetFolder = FolderEntity.getPermanentFolderById(subfolderId)
+                    ?: FolderEntity.resolvePlatformSubfolder(url, title)
+
                 val contentMarkdown = buildString {
                     appendLine(url)
                     if (description.isNotBlank()) {
@@ -821,22 +971,33 @@ class NotesTasksViewModel(application: Application) : AndroidViewModel(applicati
                     }
                 }.trim()
 
+                val parsedTags = tags.split(",")
+                    .map { it.trim().removePrefix("#").lowercase() }
+                    .filter { it.isNotBlank() }
+                    .ifEmpty { listOf("link", targetFolder.name.lowercase().replace(" (twitter)", "")) }
+                    .distinct()
+
+                parsedTags.forEach { tagName ->
+                    repository.createTag(tagName, targetFolder.colorIndex)
+                }
+
                 val note = NoteEntity(
-                    title = title.ifBlank { "Shared Link" },
+                    title = title.ifBlank { "${targetFolder.name} Link" },
                     content = contentMarkdown,
-                    tags = tags.ifBlank { "links" },
+                    tags = parsedTags.joinToString(", "),
                     imageUris = imageUrl,
                     isStarred = false,
-                    colorIndex = 2, // Ocean Blue
-                    folderId = FolderEntity.SHARED_LINKS_FOLDER_ID,
+                    colorIndex = targetFolder.colorIndex,
+                    folderId = targetFolder.id,
                     createdAt = System.currentTimeMillis(),
                     updatedAt = System.currentTimeMillis()
                 )
 
-                val noteId = repository.saveNoteWithFolders(note, listOf(FolderEntity.SHARED_LINKS_FOLDER_ID))
+                val folderIds = listOf(targetFolder.id, FolderEntity.SHARED_LINKS_FOLDER_ID).distinct()
+                val noteId = repository.saveNoteWithFolders(note, folderIds)
                 val savedNote = note.copy(id = noteId)
-                selectFolder(FolderEntity.PermanentSharedLinksFolder)
-                _shareToastEvent.tryEmit("Saved to Shared Links: ${savedNote.title}")
+                selectFolder(targetFolder)
+                _shareToastEvent.tryEmit("Saved to Shared Links • ${targetFolder.name}: ${savedNote.title}")
                 NotesTasksAppWidget.notifyWidgetUpdate(getApplication())
                 onComplete?.invoke(savedNote)
             } catch (e: Exception) {
@@ -852,7 +1013,7 @@ private val MediumPriorityColor = Color(0xFFD97706)
 private val LowPriorityColor = Color(0xFF3B82F6)
 
 private fun NoteEntity.toUiItem(isPerformanceMode: Boolean): NoteUiItem {
-    val isSharedLink = folderId == FolderEntity.SHARED_LINKS_FOLDER_ID
+    val isSharedLink = FolderEntity.isSharedLinksFamilyId(folderId)
     val images = if (imageUris.isBlank()) emptyList()
     else imageUris.split(",").map { it.trim() }.filter { it.isNotBlank() }
 

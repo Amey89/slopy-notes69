@@ -28,12 +28,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import android.app.Activity
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.example.data.model.NoteEntity
 import com.example.data.model.TaskWithSubtasks
+import com.example.ui.components.QuickShareLinkSheet
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.NoteEditScreen
 import com.example.ui.screens.SettingsScreen
@@ -48,6 +50,12 @@ sealed interface Screen {
     data class TaskEdit(val taskWithSubtasks: TaskWithSubtasks?) : Screen
     data object Settings : Screen
 }
+
+data class PendingSharePayload(
+    val sharedText: String,
+    val subject: String?,
+    val sourcePackage: String?
+)
 
 class MainActivity : ComponentActivity() {
 
@@ -86,7 +94,12 @@ class MainActivity : ComponentActivity() {
                     ) {
                         MainAppNav(
                             viewModel = viewModel,
-                            currentIntent = currentIntent
+                            currentIntent = currentIntent,
+                            referrerHost = referrer?.host ?: callingPackage,
+                            onReturnToBrowsing = {
+                                moveTaskToBack(true)
+                                finish()
+                            }
                         )
                     }
                 }
@@ -104,10 +117,14 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainAppNav(
     viewModel: NotesTasksViewModel,
-    currentIntent: Intent?
+    currentIntent: Intent?,
+    referrerHost: String? = null,
+    onReturnToBrowsing: () -> Unit = {}
 ) {
     var currentScreen by remember { mutableStateOf<Screen>(Screen.Home) }
+    var pendingSharePayload by remember { mutableStateOf<PendingSharePayload?>(null) }
     val context = LocalContext.current
+    val allTags by viewModel.allTags.collectAsState()
 
     // Show toast for link saving or sync notifications
     LaunchedEffect(Unit) {
@@ -149,21 +166,58 @@ fun MainAppNav(
 
         // 1. Quick-add from widget
         if (intent.getBooleanExtra("ACTION_QUICK_ADD", false)) {
+            intent.removeExtra("ACTION_QUICK_ADD")
             currentScreen = Screen.TaskEdit(null)
         }
 
-        // 2. Classical Android share intent (Share link to our app)
+        // 2. Android Share sheet (Share link/text to our app -> Quick Metadata & 1-Tap Tag Selection)
         if (intent.action == Intent.ACTION_SEND) {
             val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
                 ?: intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
                 ?: ""
             val subject = intent.getStringExtra(Intent.EXTRA_SUBJECT)
+            val sourcePkg = intent.getStringExtra(Intent.EXTRA_REFERRER_NAME)
+                ?: referrerHost
+                ?: (context as? Activity)?.referrer?.host
+            // Consume action so configuration changes don't re-trigger
+            intent.action = null
             if (sharedText.isNotBlank()) {
-                viewModel.handleIncomingShare(sharedText, subject) {
-                    currentScreen = Screen.Home
-                }
+                pendingSharePayload = PendingSharePayload(
+                    sharedText = sharedText,
+                    subject = subject,
+                    sourcePackage = sourcePkg
+                )
             }
         }
+    }
+
+    // Show Quick Share & 1-Tap Tag Auto-Save Sheet when sharing from another app
+    val activeShare = pendingSharePayload
+    if (activeShare != null) {
+        QuickShareLinkSheet(
+            sharedText = activeShare.sharedText,
+            subject = activeShare.subject,
+            sourcePackage = activeShare.sourcePackage,
+            allTags = allTags,
+            onSaveAndContinueBrowsing = { resolvedMetadata, customTitle, selectedTags, targetSubfolderId ->
+                pendingSharePayload = null
+                viewModel.saveQuickSharedLinkAndContinue(
+                    sharedText = activeShare.sharedText,
+                    subject = activeShare.subject,
+                    sourcePackage = activeShare.sourcePackage,
+                    resolvedMetadata = resolvedMetadata,
+                    customTitle = customTitle,
+                    selectedTags = selectedTags,
+                    targetSubfolderId = targetSubfolderId,
+                    onSaved = {
+                        onReturnToBrowsing()
+                    }
+                )
+            },
+            onDismiss = {
+                pendingSharePayload = null
+            }
+        )
     }
 
     Crossfade(

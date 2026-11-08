@@ -188,13 +188,17 @@ fun ObsidianVaultSidePanel(
     LaunchedEffect(selectedFolder, allFolders) {
         var curr = selectedFolder
         var changed = false
-        while (curr != null) {
+        var guard = 0
+        while (curr != null && guard < 12) {
             if (!expandedFolders.containsKey(curr.id)) {
                 expandedFolders[curr.id] = true
                 changed = true
             }
             val parentId = curr.parentFolderId
-            curr = if (parentId != null) allFolders.find { it.id == parentId } else null
+            curr = if (parentId != null) {
+                FolderEntity.getPermanentFolderById(parentId) ?: allFolders.find { it.id == parentId }
+            } else null
+            guard++
         }
         if (changed) {
             saveExpandedFolders()
@@ -202,10 +206,7 @@ fun ObsidianVaultSidePanel(
     }
 
     val customFolders = remember(allFolders) {
-        allFolders.filter {
-            it.id != FolderEntity.COMPLETED_TASKS_FOLDER_ID &&
-                it.id != FolderEntity.SHARED_LINKS_FOLDER_ID
-        }
+        allFolders.filter { !FolderEntity.isPermanentFolderId(it.id) }
     }
 
     val rootFolders = remember(customFolders, folderFilterQuery, sortOrder, folderNotesCountMap, folderTasksCountMap) {
@@ -623,20 +624,188 @@ fun ObsidianVaultSidePanel(
                 if (systemSectionExpanded) {
                     item(key = "system_shared_links") {
                         val linksCount = folderNotesCountMap[FolderEntity.SHARED_LINKS_FOLDER_ID] ?: 0
-                        val isSelected = selectedFolder?.id == FolderEntity.SHARED_LINKS_FOLDER_ID
-                        ObsidianNavRow(
-                            icon = Icons.Default.Link,
-                            iconTint = Color(0xFF2563EB),
-                            label = "Shared Links",
-                            count = linksCount,
-                            isSelected = isSelected,
-                            testTag = "nav_folder_shared_links",
-                            onClick = {
-                                onSelectFolder(FolderEntity.PermanentSharedLinksFolder)
-                                onSelectFilter(SearchFilter.ALL)
-                                onCloseDrawer()
+                        val isParentSelected = selectedFolder?.id == FolderEntity.SHARED_LINKS_FOLDER_ID
+                        val isSharedLinksExpanded = expandedFolders[FolderEntity.SHARED_LINKS_FOLDER_ID]
+                            ?: FolderEntity.isSharedLinksSubfolderId(selectedFolder?.id)
+                        val guideLineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(
+                                        if (isParentSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
+                                        else Color.Transparent
+                                    )
+                                    .clickable {
+                                        onSelectFolder(FolderEntity.PermanentSharedLinksFolder)
+                                        onSelectFilter(SearchFilter.ALL)
+                                        onCloseDrawer()
+                                    }
+                                    .padding(start = 4.dp, end = 10.dp, top = 7.dp, bottom = 7.dp)
+                                    .testTag("nav_folder_shared_links"),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(26.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .clickable {
+                                                setFolderExpanded(
+                                                    FolderEntity.SHARED_LINKS_FOLDER_ID,
+                                                    !isSharedLinksExpanded
+                                                )
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isSharedLinksExpanded) Icons.Default.KeyboardArrowDown
+                                            else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                            contentDescription = if (isSharedLinksExpanded) "Collapse Shared Links" else "Expand Shared Links",
+                                            tint = if (isParentSelected) MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(17.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.Link,
+                                        contentDescription = null,
+                                        tint = Color(0xFF2563EB),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(9.dp))
+                                    Text(
+                                        text = "Shared Links",
+                                        fontSize = 13.5.sp,
+                                        fontWeight = if (isParentSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isParentSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = Color(0xFF2563EB).copy(alpha = 0.14f)
+                                    ) {
+                                        Text(
+                                            text = "14 apps",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF2563EB),
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = if (isParentSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                                ) {
+                                    Text(
+                                        text = linksCount.toString(),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isParentSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
                             }
-                        )
+
+                            if (isSharedLinksExpanded) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 2.dp, bottom = 4.dp),
+                                    verticalArrangement = Arrangement.spacedBy(1.dp)
+                                ) {
+                                    FolderEntity.PermanentSharedLinkSubfolders.forEach { subfolder ->
+                                        val subCount = folderNotesCountMap[subfolder.id] ?: 0
+                                        val isSubSelected = selectedFolder?.id == subfolder.id
+                                        val subColor = FolderColors.getOrElse(subfolder.colorIndex) { Color(0xFF2563EB) }
+
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(IntrinsicSize.Min)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(
+                                                    if (isSubSelected) subColor.copy(alpha = 0.16f)
+                                                    else Color.Transparent
+                                                )
+                                                .clickable {
+                                                    onSelectFolder(subfolder)
+                                                    onSelectFilter(SearchFilter.ALL)
+                                                    onCloseDrawer()
+                                                }
+                                                .padding(end = 10.dp)
+                                                .testTag("nav_folder_shared_sub_${subfolder.id}"),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .width(22.dp)
+                                                        .fillMaxHeight(),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .width(1.dp)
+                                                            .fillMaxHeight()
+                                                            .background(guideLineColor)
+                                                    )
+                                                }
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Icon(
+                                                    imageVector = if (isSubSelected) Icons.Default.FolderOpen else Icons.Default.Folder,
+                                                    contentDescription = null,
+                                                    tint = subColor,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(
+                                                    text = subfolder.name,
+                                                    fontSize = 12.8.sp,
+                                                    fontWeight = if (isSubSelected) FontWeight.Bold else FontWeight.Medium,
+                                                    color = if (isSubSelected) subColor else MaterialTheme.colorScheme.onSurface,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier.padding(vertical = 6.dp)
+                                                )
+                                            }
+
+                                            if (subCount > 0 || isSubSelected) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    color = if (isSubSelected) subColor.copy(alpha = 0.22f)
+                                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                                                ) {
+                                                    Text(
+                                                        text = subCount.toString(),
+                                                        fontSize = 10.5.sp,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = if (isSubSelected) subColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     item(key = "system_completed_tasks") {

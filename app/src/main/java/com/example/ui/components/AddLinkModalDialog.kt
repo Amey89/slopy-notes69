@@ -1,8 +1,9 @@
 package com.example.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,12 +17,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -32,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -49,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.example.data.model.FolderEntity
 import com.example.util.LinkMetadata
 import com.example.util.LinkMetadataExtractor
 import kotlinx.coroutines.launch
@@ -56,7 +61,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun AddLinkModalDialog(
     onDismiss: () -> Unit,
-    onSaveLink: (url: String, title: String, description: String, imageUrl: String, tags: String) -> Unit
+    onSaveLink: (url: String, title: String, description: String, imageUrl: String, tags: String, subfolderId: Long) -> Unit
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
@@ -66,7 +71,8 @@ fun AddLinkModalDialog(
     var extractedTitle by remember { mutableStateOf("") }
     var extractedDescription by remember { mutableStateOf("") }
     var extractedImageUrl by remember { mutableStateOf("") }
-    var extractedTags by remember { mutableStateOf("links") }
+    var extractedTags by remember { mutableStateOf("link") }
+    var selectedSubfolderId by remember { mutableLongStateOf(FolderEntity.CHROME_SUBFOLDER_ID) }
 
     var isFetching by remember { mutableStateOf(false) }
     var detectedMetadata by remember { mutableStateOf<LinkMetadata?>(null) }
@@ -82,23 +88,19 @@ fun AddLinkModalDialog(
         errorMessage = null
         isFetching = true
 
+        // Instant subfolder & preview detection
+        val instant = LinkMetadataExtractor.resolveInstantPreview(urlToExtract)
+        selectedSubfolderId = instant.subfolderId
+
         scope.launch {
             try {
-                val metadata = LinkMetadataExtractor.resolve(cleanUrl)
+                val metadata = LinkMetadataExtractor.resolve(urlToExtract)
                 detectedMetadata = metadata
+                selectedSubfolderId = metadata.subfolderId
                 if (extractedTitle.isBlank()) extractedTitle = metadata.title
                 if (extractedDescription.isBlank()) extractedDescription = metadata.description
                 if (extractedImageUrl.isBlank()) extractedImageUrl = metadata.imageUrl
-
-                val autoTags = buildList {
-                    add("links")
-                    if (metadata.domain.isNotBlank()) add(metadata.domain.lowercase())
-                    if (metadata.isYouTube) add("video")
-                    if (metadata.domain.contains("instagram")) add("insta")
-                    if (metadata.domain.contains("pinterest") || metadata.domain.contains("pin.it")) add("pinterest")
-                    if (metadata.domain.contains("facebook")) add("facebook")
-                }.distinct().joinToString(", ")
-                extractedTags = autoTags
+                extractedTags = metadata.suggestedTags.joinToString(", ")
             } catch (e: Exception) {
                 errorMessage = "Could not fetch remote details (${e.localizedMessage ?: "network issue"}). You can still save manually."
             } finally {
@@ -106,6 +108,9 @@ fun AddLinkModalDialog(
             }
         }
     }
+
+    val targetSubfolder = FolderEntity.getPermanentFolderById(selectedSubfolderId)
+        ?: FolderEntity.PermanentChromeFolder
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -118,11 +123,19 @@ fun AddLinkModalDialog(
                     modifier = Modifier.size(24.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Save Link with Metadata",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Column {
+                    Text(
+                        text = "Save Link with Metadata",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Shared Links ▸ ${targetSubfolder.name}",
+                        fontSize = 12.sp,
+                        color = Color(0xFF2563EB),
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
         },
         text = {
@@ -133,7 +146,7 @@ fun AddLinkModalDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    text = "Extracts high-resolution images, video thumbnails, and titles from YouTube Shorts, Instagram, Facebook, Pinterest & web pages.",
+                    text = "Supports YouTube, Firefox, Chrome, Porn, TikTok, Twitch, Facebook, Instagram, X (Twitter), Threads, Pinterest, Snapchat, Reddit & Discord.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -149,6 +162,10 @@ fun AddLinkModalDialog(
                         onValueChange = {
                             inputUrl = it
                             errorMessage = null
+                            if (it.isNotBlank()) {
+                                val autoFolder = FolderEntity.resolvePlatformSubfolder(it, it)
+                                selectedSubfolderId = autoFolder.id
+                            }
                         },
                         label = { Text("Link URL or text") },
                         placeholder = { Text("https://...") },
@@ -193,6 +210,38 @@ fun AddLinkModalDialog(
                     }
                 }
 
+                // Platform Subfolder Selector
+                Text(
+                    text = "Shared Links Subfolder (Auto-detected):",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    FolderEntity.PermanentSharedLinkSubfolders.forEach { sub ->
+                        val isSelected = selectedSubfolderId == sub.id
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { selectedSubfolderId = sub.id },
+                            label = { Text(sub.name, fontSize = 11.sp) },
+                            leadingIcon = if (isSelected) {
+                                {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            } else null,
+                            shape = RoundedCornerShape(18.dp)
+                        )
+                    }
+                }
+
                 if (errorMessage != null) {
                     Text(
                         text = errorMessage!!,
@@ -207,11 +256,11 @@ fun AddLinkModalDialog(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
                             Text(
-                                text = "METADATA & IMAGE PREVIEW",
+                                text = "METADATA & IMAGE PREVIEW (${targetSubfolder.name.uppercase()})",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF2563EB),
@@ -308,10 +357,11 @@ fun AddLinkModalDialog(
                     if (finalUrl.isNotBlank()) {
                         onSaveLink(
                             finalUrl,
-                            extractedTitle.ifBlank { "Shared Link" },
+                            extractedTitle.ifBlank { "${targetSubfolder.name} Link" },
                             extractedDescription,
                             extractedImageUrl,
-                            extractedTags.ifBlank { "links" }
+                            extractedTags.ifBlank { "link" },
+                            selectedSubfolderId
                         )
                     }
                 },
@@ -319,7 +369,7 @@ fun AddLinkModalDialog(
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Text("Save to Shared Links", fontWeight = FontWeight.Bold)
+                Text("Save to ${targetSubfolder.name}", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {

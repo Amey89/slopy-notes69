@@ -79,16 +79,20 @@ fun FolderBreadcrumbBar(
     currentFolder: FolderEntity,
     allFolders: List<FolderEntity>,
     onExitFolder: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onSelectFolder: ((FolderEntity?) -> Unit)? = null
 ) {
-    // Find parent hierarchy if any
+    // Find parent hierarchy if any (including permanent Shared Links parent folder)
     val path = mutableListOf<FolderEntity>()
     var curr: FolderEntity? = currentFolder
-    while (curr != null) {
+    var guard = 0
+    while (curr != null && guard < 12) {
         path.add(0, curr)
-        curr = if (curr.parentFolderId != null) {
-            allFolders.find { it.id == curr?.parentFolderId }
+        val parentId = curr.parentFolderId
+        curr = if (parentId != null) {
+            FolderEntity.getPermanentFolderById(parentId) ?: allFolders.find { it.id == parentId }
         } else null
+        guard++
     }
 
     Surface(
@@ -111,9 +115,9 @@ fun FolderBreadcrumbBar(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    imageVector = Icons.Default.FolderOpen,
+                    imageVector = if (FolderEntity.isSharedLinksFamilyId(currentFolder.id)) Icons.Default.Link else Icons.Default.FolderOpen,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = if (FolderEntity.isSharedLinksFamilyId(currentFolder.id)) Color(0xFF2563EB) else MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
@@ -121,7 +125,13 @@ fun FolderBreadcrumbBar(
                 Text(
                     text = "All",
                     fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable {
+                            if (onSelectFolder != null) onSelectFolder(null) else onExitFolder()
+                        }
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
                 )
 
                 path.forEach { f ->
@@ -133,11 +143,18 @@ fun FolderBreadcrumbBar(
                         modifier = Modifier.size(10.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
+                    val isCurrent = f.id == currentFolder.id
                     Text(
                         text = f.name,
                         fontSize = 13.sp,
-                        fontWeight = if (f.id == currentFolder.id) FontWeight.Bold else FontWeight.Normal,
-                        color = if (f.id == currentFolder.id) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable(enabled = !isCurrent && onSelectFolder != null) {
+                                onSelectFolder?.invoke(f)
+                            }
+                            .padding(horizontal = 4.dp, vertical = 2.dp)
                     )
                 }
             }

@@ -9,6 +9,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -260,7 +262,7 @@ fun HomeScreen(
                                 val folderColor = when {
                                     currentFolder == null -> MaterialTheme.colorScheme.primary
                                     currentFolder.id == FolderEntity.COMPLETED_TASKS_FOLDER_ID -> Color(0xFF10B981)
-                                    currentFolder.id == FolderEntity.SHARED_LINKS_FOLDER_ID -> Color(0xFF2563EB)
+                                    FolderEntity.isSharedLinksFamilyId(currentFolder.id) -> Color(0xFF2563EB)
                                     else -> FolderColors.getOrElse(currentFolder.colorIndex) { MaterialTheme.colorScheme.primary }
                                 }
                                 Box(
@@ -276,7 +278,7 @@ fun HomeScreen(
                                         imageVector = when {
                                             currentFolder == null -> Icons.Default.AccountTree
                                             currentFolder.id == FolderEntity.COMPLETED_TASKS_FOLDER_ID -> Icons.Default.CheckCircle
-                                            currentFolder.id == FolderEntity.SHARED_LINKS_FOLDER_ID -> Icons.Default.Link
+                                            FolderEntity.isSharedLinksFamilyId(currentFolder.id) -> Icons.Default.Link
                                             else -> Icons.Default.FolderOpen
                                         },
                                         contentDescription = null,
@@ -510,8 +512,92 @@ fun HomeScreen(
                             FolderBreadcrumbBar(
                                 currentFolder = selectedFolder!!,
                                 allFolders = allFolders,
-                                onExitFolder = { viewModel.selectFolder(null) }
+                                onExitFolder = { viewModel.selectFolder(null) },
+                                onSelectFolder = { viewModel.selectFolder(it) }
                             )
+                        }
+                    }
+
+                    // 1b. Permanent Platform Subfolders Strip (when viewing Shared Links or any of its 14 app subfolders)
+                    if (FolderEntity.isSharedLinksFamilyId(selectedFolder?.id)) {
+                        item(key = "shared_links_platform_subfolders_strip", contentType = "subfolders_strip") {
+                            val allSharedCount = folderNotesCountMap[FolderEntity.SHARED_LINKS_FOLDER_ID] ?: 0
+                            val isRootSharedSelected = selectedFolder?.id == FolderEntity.SHARED_LINKS_FOLDER_ID
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(vertical = 2.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    onClick = { viewModel.selectFolder(FolderEntity.PermanentSharedLinksFolder) },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isRootSharedSelected) Color(0xFF2563EB).copy(alpha = 0.18f)
+                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                                    border = BorderStroke(
+                                        width = if (isRootSharedSelected) 1.5.dp else 1.dp,
+                                        color = if (isRootSharedSelected) Color(0xFF2563EB)
+                                        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+                                    )
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Link,
+                                            contentDescription = null,
+                                            tint = if (isRootSharedSelected) Color(0xFF2563EB) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "All Shared ($allSharedCount)",
+                                            fontSize = 12.sp,
+                                            fontWeight = if (isRootSharedSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                            color = if (isRootSharedSelected) Color(0xFF2563EB) else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+
+                                FolderEntity.PermanentSharedLinkSubfolders.forEach { subfolder ->
+                                    val subCount = folderNotesCountMap[subfolder.id] ?: 0
+                                    val isSubSelected = selectedFolder?.id == subfolder.id
+                                    val subColor = FolderColors.getOrElse(subfolder.colorIndex) { Color(0xFF2563EB) }
+                                    Surface(
+                                        onClick = { viewModel.selectFolder(subfolder) },
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (isSubSelected) subColor.copy(alpha = 0.18f)
+                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                        border = BorderStroke(
+                                            width = if (isSubSelected) 1.5.dp else 1.dp,
+                                            color = if (isSubSelected) subColor
+                                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+                                        )
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = if (isSubSelected) Icons.Default.FolderOpen else Icons.Default.Folder,
+                                                contentDescription = null,
+                                                tint = subColor,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(5.dp))
+                                            Text(
+                                                text = if (subCount > 0) "${subfolder.name} ($subCount)" else subfolder.name,
+                                                fontSize = 12.sp,
+                                                fontWeight = if (isSubSelected) FontWeight.ExtraBold else FontWeight.Medium,
+                                                color = if (isSubSelected) subColor else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -591,7 +677,7 @@ fun HomeScreen(
 
                     if (showNotes && noteUiItems.isNotEmpty()) {
                         item(key = "notes_header", contentType = "header") {
-                            val isLinksFolder = selectedFolder?.id == FolderEntity.SHARED_LINKS_FOLDER_ID
+                            val isLinksFolder = FolderEntity.isSharedLinksFamilyId(selectedFolder?.id)
                             val accentColor = if (isLinksFolder) Color(0xFF2563EB) else MaterialTheme.colorScheme.secondary
                             Spacer(modifier = Modifier.height(4.dp))
                             Row(
@@ -615,7 +701,13 @@ fun HomeScreen(
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
-                                            text = if (isLinksFolder) "SHARED LINKS" else "NOTES",
+                                            text = if (selectedFolder != null && FolderEntity.isSharedLinksSubfolderId(selectedFolder?.id)) {
+                                                "SHARED LINKS • ${selectedFolder?.name?.uppercase()}"
+                                            } else if (isLinksFolder) {
+                                                "SHARED LINKS"
+                                            } else {
+                                                "NOTES"
+                                            },
                                             style = MaterialTheme.typography.labelMedium.copy(
                                                 fontWeight = FontWeight.ExtraBold,
                                                 letterSpacing = 0.6.sp
@@ -838,13 +930,14 @@ fun HomeScreen(
     if (showAddLinkDialog) {
         AddLinkModalDialog(
             onDismiss = { showAddLinkDialog = false },
-            onSaveLink = { url, title, description, imageUrl, tags ->
+            onSaveLink = { url, title, description, imageUrl, tags, subfolderId ->
                 viewModel.saveManualLinkWithMetadata(
                     url = url,
                     title = title,
                     description = description,
                     imageUrl = imageUrl,
-                    tags = tags
+                    tags = tags,
+                    subfolderId = subfolderId
                 )
                 showAddLinkDialog = false
             }

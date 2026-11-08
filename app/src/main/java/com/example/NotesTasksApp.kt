@@ -21,7 +21,7 @@ import kotlinx.coroutines.launch
 
 class NotesTasksApp : Application() {
 
-    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     val database by lazy { AppDatabase.getDatabase(this) }
     val repository by lazy {

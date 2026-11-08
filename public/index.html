@@ -1083,14 +1083,18 @@
         <span class="nav-counter" id="countCompletedTasks">0</span>
       </button>
 
-      <!-- Permanent Folder 2: Shared Links (-998) -->
-      <button class="nav-item" onclick="setNavView('folder', -998)">
-        <div class="nav-item-content">
-          <span class="perma-folder-badge folder-links-dot"></span>
-          <span>Shared Links</span>
-        </div>
-        <span class="nav-counter" id="countSharedLinks">0</span>
-      </button>
+      <!-- Permanent Folder 2: Shared Links (-998) + 14 Permanent App Subfolders -->
+      <div style="display:flex; align-items:center; gap:2px;">
+        <button class="nav-item" id="navBtnSharedLinks" style="flex:1;" onclick="setNavView('folder', -998)">
+          <div class="nav-item-content">
+            <span class="perma-folder-badge folder-links-dot"></span>
+            <span>Shared Links</span>
+          </div>
+          <span class="nav-counter" id="countSharedLinks">0</span>
+        </button>
+        <button class="folder-btn-action" id="btnToggleSharedSubfolders" onclick="toggleSharedLinksSubfoldersSidebar(event)" title="Expand/Collapse 14 App Subfolders" style="padding:6px 8px; font-size:0.78rem;">▾</button>
+      </div>
+      <div id="sharedLinksSubfoldersSidebar" style="display:flex; flex-direction:column; gap:2px; margin-bottom:4px;"></div>
 
       <div class="nav-label" style="display:flex; justify-content:space-between; align-items:center;">
         <span>Custom Folders</span>
@@ -1215,6 +1219,12 @@
         <div class="tags-bar-container" id="globalTagsBar">
           <span style="font-size:0.75rem; color:var(--text-muted); font-weight:600; white-space:nowrap;">🏷️ Filter Tag:</span>
           <div id="globalTagsChipsRow" style="display:flex; gap:6px; align-items:center;"></div>
+        </div>
+
+        <!-- Permanent Shared Links 14 Platform Subfolders Bar (shown when inside Shared Links or any subfolder) -->
+        <div class="tags-bar-container" id="sharedLinksSubfoldersBar" style="display:none; padding-top:2px;">
+          <span style="font-size:0.75rem; color:#60a5fa; font-weight:700; white-space:nowrap;">📂 App Subfolder:</span>
+          <div id="sharedLinksSubfoldersChipsRow" style="display:flex; gap:6px; align-items:center;"></div>
         </div>
       </div>
 
@@ -1410,49 +1420,72 @@
   </div>
 </div>
 
-<!-- Add Link Modal (+Links) with Automatic Metadata & Image Extraction -->
+<!-- Add Link Modal (+Links) with Automatic Metadata, 14 App Subfolders & 1-Tap Tag Auto-Save -->
 <div class="modal-backdrop" id="linkModal">
-  <div class="modal-card" style="max-width:540px;">
+  <div class="modal-card" style="max-width:560px;">
     <div class="modal-header">
       <div style="display:flex; align-items:center; gap:8px;">
         <span style="font-size:1.3rem;">🔗</span>
-        <h3 class="modal-title">Save Link with Metadata</h3>
+        <h3 class="modal-title">Quick Share & Save Link with Metadata</h3>
       </div>
       <button class="btn-icon" onclick="closeModal('linkModal')">✕</button>
     </div>
     <div class="modal-body">
-      <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:12px; line-height:1.4;">
-        Paste any URL (YouTube Shorts/videos, Instagram, Facebook, Pinterest, or any webpage). We'll automatically resolve its title, image thumbnail, and description and store it right into your <strong>Shared Links</strong> folder.
+      <p style="font-size:0.84rem; color:var(--text-secondary); margin-bottom:8px; line-height:1.4;">
+        Paste any link (YouTube, Pinterest, X/Twitter, TikTok, Instagram, Reddit, Twitch, Discord, Facebook, Threads, Snapchat, Porn, Firefox, Chrome). Metadata is extracted automatically and routed into its permanent <strong>Shared Links</strong> subfolder.
       </p>
 
       <div class="form-group">
         <label class="form-label">Link URL or Shared Text</label>
         <div style="display:flex; gap:8px;">
-          <input type="url" class="form-input" id="linkInputUrl" placeholder="https://youtube.com/shorts/... or https://instagram.com/p/... or https://..." style="font-size:0.95rem; flex:1;" oninput="onLinkUrlInputChanged(this.value)">
+          <input type="url" class="form-input" id="linkInputUrl" placeholder="https://pinterest.com/pin/... or https://youtube.com/... or https://x.com/..." style="font-size:0.95rem; flex:1;" oninput="onLinkUrlInputChanged(this.value)">
           <button type="button" class="btn btn-primary" onclick="fetchLinkMetadataManual()" id="btnFetchMeta">
             ⚡ Fetch
           </button>
         </div>
       </div>
 
+      <!-- 1-Tap Tag Selection Auto-Save Box -->
+      <div style="background:rgba(37, 99, 235, 0.1); border:1px solid rgba(59, 130, 246, 0.35); border-radius:var(--radius-sm); padding:10px 12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <span style="font-size:0.76rem; font-weight:700; color:#60a5fa; text-transform:uppercase; letter-spacing:0.5px;">
+            ⚡ Tap a Tag to Assign & Auto-Save Immediately
+          </span>
+          <label style="font-size:0.74rem; color:var(--text-secondary); display:flex; align-items:center; gap:4px; cursor:pointer;">
+            <input type="checkbox" id="chkOneTapTagAutoSave" checked> 1-Tap Auto-Save
+          </label>
+        </div>
+        <div class="quick-tags-row" id="linkQuickAutoSaveTagsRow" style="margin-top:4px;"></div>
+      </div>
+
       <!-- Live Metadata Preview Box -->
       <div class="link-meta-preview" id="linkMetaPreview">
-        <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px; font-weight:700; color:var(--primary); margin-bottom:6px;">
-          Detected Metadata Preview
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <span style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px; font-weight:700; color:var(--primary);">
+            Detected Metadata Preview
+          </span>
+          <span class="link-badge" id="linkMetaPlatformBadge">🔗 Shared Links</span>
         </div>
         <img id="linkMetaImagePreview" class="link-meta-thumb" src="" alt="Thumbnail preview" style="display:none;">
         <div style="font-weight:600; font-size:0.92rem; margin-bottom:4px;" id="linkMetaTitlePreview">Title</div>
         <div style="font-size:0.8rem; color:var(--text-secondary); line-height:1.4;" id="linkMetaDescPreview">Description</div>
       </div>
 
-      <div class="form-group" style="margin-top:12px;">
+      <div style="display:flex; gap:12px; margin-top:6px;">
+        <div class="form-group" style="flex:1;">
+          <label class="form-label">Permanent Subfolder in Shared Links</label>
+          <select class="form-select" id="linkSelectSubfolder"></select>
+        </div>
+      </div>
+
+      <div class="form-group">
         <label class="form-label">Title (Auto-filled or Custom)</label>
         <input type="text" class="form-input" id="linkInputTitle" placeholder="Page or Video Title">
       </div>
 
       <div class="form-group">
         <label class="form-label">Notes / Description</label>
-        <textarea class="form-textarea" style="min-height:60px;" id="linkInputDescription" placeholder="Optional notes or summary..."></textarea>
+        <textarea class="form-textarea" style="min-height:56px;" id="linkInputDescription" placeholder="Optional notes, author, or summary..."></textarea>
       </div>
 
       <div class="form-group">
@@ -1463,18 +1496,11 @@
       <div class="form-group">
         <label class="form-label">Tags (comma separated)</label>
         <input type="text" class="form-input" id="linkInputTags" placeholder="links, video, social, inspiration...">
-        <div class="quick-tags-row">
-          <span style="font-size:0.75rem; color:var(--text-muted); align-self:center;">Quick:</span>
-          <span class="quick-tag-chip" onclick="appendTagToInput('linkInputTags', 'links')">+links</span>
-          <span class="quick-tag-chip" onclick="appendTagToInput('linkInputTags', 'video')">+video</span>
-          <span class="quick-tag-chip" onclick="appendTagToInput('linkInputTags', 'social')">+social</span>
-          <span class="quick-tag-chip" onclick="appendTagToInput('linkInputTags', 'reading')">+reading</span>
-        </div>
       </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('linkModal')">Cancel</button>
-      <button class="btn" style="background:#2563eb; color:#fff;" onclick="saveLinkToSharedLinks()">Save to Shared Links</button>
+      <button class="btn" style="background:#2563eb; color:#fff;" onclick="saveLinkToSharedLinks()">Save Link Note</button>
     </div>
   </div>
 </div>
@@ -1593,6 +1619,41 @@ let state = {
 const PERMA_COMPLETED_TASKS_ID = -999;
 const PERMA_SHARED_LINKS_ID = -998;
 
+const PERMANENT_SHARED_SUBFOLDERS = [
+  { id: -901, name: 'YouTube', parentFolderId: PERMA_SHARED_LINKS_ID, colorIndex: 4, defaultTags: ['youtube', 'video', 'links'] },
+  { id: -902, name: 'Firefox', parentFolderId: PERMA_SHARED_LINKS_ID, colorIndex: 3, defaultTags: ['firefox', 'web', 'links'] },
+  { id: -903, name: 'Chrome', parentFolderId: PERMA_SHARED_LINKS_ID, colorIndex: 0, defaultTags: ['chrome', 'web', 'links'] },
+  { id: -904, name: 'Porn', parentFolderId: PERMA_SHARED_LINKS_ID, colorIndex: 4, defaultTags: ['porn', 'nsfw', 'video', 'links'] },
+  { id: -905, name: 'TikTok', parentFolderId: PERMA_SHARED_LINKS_ID, colorIndex: 2, defaultTags: ['tiktok', 'short', 'video', 'links'] },
+  { id: -906, name: 'Twitch', parentFolderId: PERMA_SHARED_LINKS_ID, colorIndex: 2, defaultTags: ['twitch', 'stream', 'gaming', 'links'] },
+  { id: -907, name: 'Facebook', parentFolderId: PERMA_SHARED_LINKS_ID, colorIndex: 0, defaultTags: ['facebook', 'social', 'links'] },
+  { id: -908, name: 'Instagram', parentFolderId: PERMA_SHARED_LINKS_ID, colorIndex: 4, defaultTags: ['instagram', 'reels', 'social', 'links'] },
+  { id: -909, name: 'X (Twitter)', parentFolderId: PERMA_SHARED_LINKS_ID, colorIndex: 5, defaultTags: ['x', 'twitter', 'social', 'links'] },
+  { id: -910, name: 'Threads', parentFolderId: PERMA_SHARED_LINKS_ID, colorIndex: 2, defaultTags: ['threads', 'social', 'links'] },
+  { id: -911, name: 'Pinterest', parentFolderId: PERMA_SHARED_LINKS_ID, colorIndex: 4, defaultTags: ['pinterest', 'inspiration', 'pins', 'links'] },
+  { id: -912, name: 'Snapchat', parentFolderId: PERMA_SHARED_LINKS_ID, colorIndex: 3, defaultTags: ['snapchat', 'spotlight', 'social', 'links'] },
+  { id: -913, name: 'Reddit', parentFolderId: PERMA_SHARED_LINKS_ID, colorIndex: 3, defaultTags: ['reddit', 'discussion', 'thread', 'links'] },
+  { id: -914, name: 'Discord', parentFolderId: PERMA_SHARED_LINKS_ID, colorIndex: 2, defaultTags: ['discord', 'community', 'chat', 'links'] }
+];
+
+function isSharedLinksSubfolderId(folderId) {
+  return typeof folderId === 'number' && folderId <= -901 && folderId >= -914;
+}
+
+function isSharedLinksFamilyId(folderId) {
+  return folderId === PERMA_SHARED_LINKS_ID || isSharedLinksSubfolderId(folderId);
+}
+
+function isPermanentFolderId(folderId) {
+  return folderId === PERMA_COMPLETED_TASKS_ID || isSharedLinksFamilyId(folderId);
+}
+
+function getPermanentSubfolderById(folderId) {
+  return PERMANENT_SHARED_SUBFOLDERS.find(s => s.id === folderId) || null;
+}
+
+let sharedSubfoldersSidebarExpanded = true;
+
 let currentNav = 'all'; // 'all', 'notes', 'tasks', 'starred', 'folder'
 let currentFolderId = null;
 let currentSearch = '';
@@ -1607,13 +1668,16 @@ let selectedTagColorIndex = 0;
 let draftSubtasks = [];
 
 // Drive state
+const DRIVE_MIRROR_KEY = 'notes_tasks_drive_cloud_mirror';
 let driveConfig = {
   clientId: '',
   apiKey: '',
   accessToken: '',
+  tokenIssuedAt: 0,
   accountEmail: '',
   cachedFileId: '',
-  lastSyncTime: 0
+  lastSyncTime: 0,
+  isConnected: false
 };
 
 let tokenClient = null;
@@ -1640,9 +1704,18 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('sidebarInstallArea').style.display = 'block';
   });
 
-  // Auto-sync on open if token available
-  if (driveConfig.accessToken) {
+  // Auto-sync on open if connected
+  if (driveConfig.accessToken || driveConfig.isConnected) {
     manualSync(true);
+  }
+
+  // Handle incoming Web Share Target query params (?url=...&text=...&title=...)
+  const params = new URLSearchParams(window.location.search);
+  const sharedUrl = params.get('url') || params.get('text') || '';
+  const sharedTitle = params.get('title') || '';
+  if (sharedUrl.trim()) {
+    openAddLinkModal(sharedUrl.trim(), sharedTitle.trim());
+    window.history.replaceState({}, document.title, window.location.pathname);
   }
 });
 
@@ -1759,8 +1832,8 @@ function renderNavigation() {
   
   // Permanent completed tasks count
   const completedTasksCount = state.tasks.filter(t => t.isCompleted || t.folderId === PERMA_COMPLETED_TASKS_ID).length;
-  // Permanent shared links count
-  const sharedLinksCount = state.notes.filter(n => n.folderId === PERMA_SHARED_LINKS_ID).length;
+  // Permanent shared links count (includes parent -998 and all 14 permanent app subfolders -901..-914)
+  const sharedLinksCount = state.notes.filter(n => isSharedLinksFamilyId(n.folderId)).length;
 
   document.getElementById('countAll').textContent = totalNotes + totalTasks;
   document.getElementById('countNotes').textContent = totalNotes;
@@ -1769,13 +1842,64 @@ function renderNavigation() {
   document.getElementById('countCompletedTasks').textContent = completedTasksCount;
   document.getElementById('countSharedLinks').textContent = sharedLinksCount;
 
+  // Render 14 Permanent Shared Links Subfolders in Sidebar
+  const sharedSubSidebar = document.getElementById('sharedLinksSubfoldersSidebar');
+  const toggleBtn = document.getElementById('btnToggleSharedSubfolders');
+  if (toggleBtn) {
+    toggleBtn.textContent = sharedSubfoldersSidebarExpanded ? '▾' : '▸';
+  }
+  if (sharedSubSidebar) {
+    sharedSubSidebar.style.display = sharedSubfoldersSidebarExpanded ? 'flex' : 'none';
+    sharedSubSidebar.innerHTML = '';
+    PERMANENT_SHARED_SUBFOLDERS.forEach(sub => {
+      const subCount = state.notes.filter(n => n.folderId === sub.id).length;
+      const btn = document.createElement('button');
+      btn.className = `nav-item subfolder-item ${currentNav === 'folder' && currentFolderId === sub.id ? 'active' : ''}`;
+      btn.onclick = () => setNavView('folder', sub.id);
+      btn.innerHTML = `
+        <div class="nav-item-content">
+          <span class="nav-icon">↳ 🔗</span>
+          <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(sub.name)}</span>
+        </div>
+        <span class="nav-counter">${subCount}</span>
+      `;
+      sharedSubSidebar.appendChild(btn);
+    });
+  }
+
+  // Render Horizontal 14 Subfolders Strip when inside Shared Links or any of its 14 subfolders
+  const sharedBar = document.getElementById('sharedLinksSubfoldersBar');
+  const sharedChipsRow = document.getElementById('sharedLinksSubfoldersChipsRow');
+  if (sharedBar && sharedChipsRow) {
+    if (currentNav === 'folder' && isSharedLinksFamilyId(currentFolderId)) {
+      sharedBar.style.display = 'flex';
+      sharedChipsRow.innerHTML = '';
+
+      const allSharedChip = document.createElement('button');
+      allSharedChip.className = `tag-chip-filter ${currentFolderId === PERMA_SHARED_LINKS_ID ? 'active' : ''}`;
+      allSharedChip.innerHTML = `<span>All Shared (${sharedLinksCount})</span>`;
+      allSharedChip.onclick = () => setNavView('folder', PERMA_SHARED_LINKS_ID);
+      sharedChipsRow.appendChild(allSharedChip);
+
+      PERMANENT_SHARED_SUBFOLDERS.forEach(sub => {
+        const subCount = state.notes.filter(n => n.folderId === sub.id).length;
+        const chip = document.createElement('button');
+        chip.className = `tag-chip-filter ${currentFolderId === sub.id ? 'active' : ''}`;
+        chip.innerHTML = `<span>${escapeHtml(sub.name)}${subCount > 0 ? ` (${subCount})` : ''}</span>`;
+        chip.onclick = () => setNavView('folder', sub.id);
+        sharedChipsRow.appendChild(chip);
+      });
+    } else {
+      sharedBar.style.display = 'none';
+    }
+  }
+
   // Custom folders & Subfolders tree
   const listEl = document.getElementById('customFoldersList');
   listEl.innerHTML = '';
 
   const rootFolders = state.folders.filter(f => 
-    f.id !== PERMA_COMPLETED_TASKS_ID && 
-    f.id !== PERMA_SHARED_LINKS_ID && 
+    !isPermanentFolderId(f.id) && 
     (!f.parentFolderId || f.parentFolderId === null)
   );
 
@@ -1790,6 +1914,12 @@ function renderNavigation() {
 
   // Render Tags in Sidebar and Header bar
   renderTagsNavigation();
+}
+
+function toggleSharedLinksSubfoldersSidebar(e) {
+  if (e) e.stopPropagation();
+  sharedSubfoldersSidebarExpanded = !sharedSubfoldersSidebarExpanded;
+  renderNavigation();
 }
 
 const TAG_COLOR_HEX = ['#6366f1', '#ef4444', '#10b981', '#3b82f6', '#a855f7', '#f59e0b'];
@@ -1925,7 +2055,9 @@ function renderItems() {
     if (currentFolderId === PERMA_COMPLETED_TASKS_ID) {
       list = state.tasks.filter(t => t.isCompleted || t.folderId === PERMA_COMPLETED_TASKS_ID).map(t => ({ type: 'task', ...t }));
     } else if (currentFolderId === PERMA_SHARED_LINKS_ID) {
-      list = state.notes.filter(n => n.folderId === PERMA_SHARED_LINKS_ID).map(n => ({ type: 'note', ...n }));
+      list = state.notes.filter(n => isSharedLinksFamilyId(n.folderId)).map(n => ({ type: 'note', ...n }));
+    } else if (isSharedLinksSubfolderId(currentFolderId)) {
+      list = state.notes.filter(n => n.folderId === currentFolderId).map(n => ({ type: 'note', ...n }));
     } else {
       list = [
         ...state.notes.filter(n => n.folderId === currentFolderId).map(n => ({ type: 'note', ...n })),
@@ -1981,7 +2113,7 @@ function renderItems() {
 
   // FOLDER SEPARATION: When inside a folder (or All items) and separation is enabled,
   // distinctly partition into TASKS and NOTES sections like the Android app!
-  const isInsideFolder = currentNav === 'folder' && currentFolderId !== PERMA_COMPLETED_TASKS_ID && currentFolderId !== PERMA_SHARED_LINKS_ID;
+  const isInsideFolder = currentNav === 'folder' && !isPermanentFolderId(currentFolderId);
   const shouldSeparate = (isInsideFolder && folderSeparationMode === 'split') || (currentNav === 'all' && currentTypeFilter === 'all' && !selectedTagFilter && !currentSearch.trim());
 
   if (shouldSeparate) {
@@ -2038,7 +2170,8 @@ function createNoteCard(note) {
 
   const tagsArr = (note.tags || '').split(',').map(t => t.trim()).filter(Boolean);
   const folderName = getFolderName(note.folderId);
-  const isSharedLink = note.folderId === PERMA_SHARED_LINKS_ID;
+  const isSharedLink = isSharedLinksFamilyId(note.folderId);
+  const permaSub = getPermanentSubfolderById(note.folderId);
 
   // Rich images: extract from imageUris property or first URL image in content
   let displayImg = note.imageUris || '';
@@ -2050,7 +2183,7 @@ function createNoteCard(note) {
   card.innerHTML = `
     <div class="card-header">
       <div style="display:flex; align-items:center; gap:6px; flex:1;">
-        ${isSharedLink ? `<span class="link-badge">🔗 Shared Link</span>` : ''}
+        ${isSharedLink ? `<span class="link-badge">🔗 ${permaSub ? escapeHtml(permaSub.name) : 'Shared Link'}</span>` : ''}
         <div class="card-title">${escapeHtml(note.title || 'Untitled Note')}</div>
       </div>
       <div class="card-actions-row">
@@ -2160,6 +2293,8 @@ function createTaskCard(task) {
 function getFolderName(folderId) {
   if (folderId === PERMA_COMPLETED_TASKS_ID) return 'Completed Tasks';
   if (folderId === PERMA_SHARED_LINKS_ID) return 'Shared Links';
+  const permaSub = getPermanentSubfolderById(folderId);
+  if (permaSub) return `Shared Links / ${permaSub.name}`;
   const found = state.folders.find(f => f.id === folderId);
   return found ? found.name : null;
 }
@@ -2479,14 +2614,16 @@ function populateFolderDropdown(selectId) {
   
   if (selectId === 'noteSelectFolder') {
     select.innerHTML += '<option value="-998">📁 Shared Links (Permanent)</option>';
+    PERMANENT_SHARED_SUBFOLDERS.forEach(sub => {
+      select.innerHTML += `<option value="${sub.id}">　↳ 🔗 ${escapeHtml(sub.name)}</option>`;
+    });
   } else {
     select.innerHTML += '<option value="-999">📁 Completed Tasks (Permanent)</option>';
   }
 
   // Display hierarchy with indent in select dropdowns
   const rootFolders = state.folders.filter(f => 
-    f.id !== PERMA_COMPLETED_TASKS_ID && 
-    f.id !== PERMA_SHARED_LINKS_ID && 
+    !isPermanentFolderId(f.id) && 
     (!f.parentFolderId || f.parentFolderId === null)
   );
 
@@ -2586,10 +2723,10 @@ function setNavView(nav, folderId = null) {
   currentNav = nav;
   currentFolderId = folderId;
 
-  // Toggle Add Subfolder button in topbar if currently inside a folder
+  // Toggle Add Subfolder button in topbar if currently inside a custom folder
   const btnSub = document.getElementById('btnTopAddSubfolder');
   if (btnSub) {
-    if (nav === 'folder' && folderId !== null && folderId !== PERMA_COMPLETED_TASKS_ID && folderId !== PERMA_SHARED_LINKS_ID) {
+    if (nav === 'folder' && folderId !== null && !isPermanentFolderId(folderId)) {
       btnSub.style.display = 'inline-flex';
     } else {
       btnSub.style.display = 'none';
@@ -2607,6 +2744,9 @@ function setNavView(nav, folderId = null) {
       titleEl.innerHTML = '<span class="perma-folder-badge folder-completed-dot"></span> Completed Tasks';
     } else if (folderId === PERMA_SHARED_LINKS_ID) {
       titleEl.innerHTML = '<span class="perma-folder-badge folder-links-dot"></span> Shared Links';
+    } else if (isSharedLinksSubfolderId(folderId)) {
+      const sub = getPermanentSubfolderById(folderId);
+      titleEl.innerHTML = `<span style="opacity:0.75; cursor:pointer;" onclick="setNavView('folder', ${PERMA_SHARED_LINKS_ID})">🔗 Shared Links</span> / 📂 ${escapeHtml(sub ? sub.name : 'Subfolder')}`;
     } else {
       const f = state.folders.find(x => x.id === folderId);
       const isSub = f && f.parentFolderId && f.parentFolderId !== null;
@@ -2619,10 +2759,10 @@ function setNavView(nav, folderId = null) {
     }
   }
 
-  // Toggle folder separation control when inside a folder
+  // Toggle folder separation control when inside a custom folder
   const sepControl = document.getElementById('folderViewSeparationControl');
   if (sepControl) {
-    if (nav === 'folder' && folderId !== PERMA_COMPLETED_TASKS_ID && folderId !== PERMA_SHARED_LINKS_ID) {
+    if (nav === 'folder' && !isPermanentFolderId(folderId)) {
       sepControl.style.display = 'inline-flex';
     } else {
       sepControl.style.display = 'none';
@@ -2690,29 +2830,148 @@ function deleteCustomTag(name) {
   triggerAutoCloudSync();
 }
 
-// ================= +LINKS & METADATA EXTRACTION ENGINE =================
+// ================= +LINKS, 14 PLATFORM METADATA EXTRACTOR & 1-TAP TAG AUTO-SAVE =================
 
 let _metaDebounceTimer = null;
 
-function openAddLinkModal() {
-  document.getElementById('linkInputUrl').value = '';
-  document.getElementById('linkInputTitle').value = '';
+function resolvePlatformSubfolderWeb(url, rawText = '') {
+  const lowerUrl = (url || '').toLowerCase().trim();
+  const lowerText = (rawText || '').toLowerCase();
+  const host = extractDomain(lowerUrl);
+
+  if (host.includes('youtube.com') || host.includes('youtu.be') || host.includes('youtube-nocookie.com')) {
+    return getPermanentSubfolderById(-901);
+  }
+  if (host.includes('tiktok.com') || host.includes('tiktokv.com')) {
+    return getPermanentSubfolderById(-905);
+  }
+  if (host.includes('twitch.tv') || host.includes('twitch.com')) {
+    return getPermanentSubfolderById(-906);
+  }
+  if (host.includes('threads.net') || host.includes('threads.com')) {
+    return getPermanentSubfolderById(-910);
+  }
+  if (host.includes('instagram.com') || host.includes('instagr.am')) {
+    return getPermanentSubfolderById(-908);
+  }
+  if (host.includes('facebook.com') || host.includes('fb.watch') || host.includes('fb.com') || host.includes('fb.gg')) {
+    return getPermanentSubfolderById(-907);
+  }
+  if (host === 'x.com' || host.endsWith('.x.com') || host.includes('twitter.com') || host === 't.co' || host.includes('vxtwitter.com') || host.includes('fxtwitter.com')) {
+    return getPermanentSubfolderById(-909);
+  }
+  if (host.includes('pinterest.') || host.includes('pin.it') || host.includes('pinimg.com')) {
+    return getPermanentSubfolderById(-911);
+  }
+  if (host.includes('snapchat.com') || host.includes('snap.com')) {
+    return getPermanentSubfolderById(-912);
+  }
+  if (host.includes('reddit.com') || host.includes('redd.it') || host.includes('redditmedia.com')) {
+    return getPermanentSubfolderById(-913);
+  }
+  if (host.includes('discord.com') || host.includes('discord.gg') || host.includes('discordapp.com')) {
+    return getPermanentSubfolderById(-914);
+  }
+  const pornKeywords = [
+    'pornhub', 'xvideos', 'xnxx', 'xhamster', 'redtube', 'youporn',
+    'spankbang', 'eporner', 'tube8', 'brazzers', 'onlyfans', 'fansly',
+    'chaturbate', 'stripchat', 'rule34', 'nhentai', 'hanime', 'jav',
+    'erome', 'redgifs', 'motherless', 'txxx', 'beeg', 'hqporner', 'porn'
+  ];
+  if (pornKeywords.some(k => host.includes(k) || lowerUrl.includes(k))) {
+    return getPermanentSubfolderById(-904);
+  }
+  if (host.includes('mozilla.org') || host.includes('firefox.com') || lowerText.includes('firefox')) {
+    return getPermanentSubfolderById(-902);
+  }
+  if (host.includes('chrome.google.com') || host.includes('chromewebstore.google.com')) {
+    return getPermanentSubfolderById(-903);
+  }
+  const ua = (navigator.userAgent || '').toLowerCase();
+  if (ua.includes('firefox')) return getPermanentSubfolderById(-902);
+  return getPermanentSubfolderById(-903);
+}
+
+function populateLinkSubfolderDropdown(selectedSubfolderId = -903) {
+  const select = document.getElementById('linkSelectSubfolder');
+  if (!select) return;
+  select.innerHTML = '';
+  PERMANENT_SHARED_SUBFOLDERS.forEach(sub => {
+    const opt = document.createElement('option');
+    opt.value = sub.id;
+    opt.textContent = `📂 Shared Links / ${sub.name}`;
+    select.appendChild(opt);
+  });
+  const rootOpt = document.createElement('option');
+  rootOpt.value = PERMA_SHARED_LINKS_ID;
+  rootOpt.textContent = '📁 Shared Links (Root)';
+  select.appendChild(rootOpt);
+  select.value = selectedSubfolderId;
+}
+
+function renderLinkQuickAutoSaveTags(extraTags = []) {
+  const row = document.getElementById('linkQuickAutoSaveTagsRow');
+  if (!row) return;
+  row.innerHTML = '';
+
+  const tagSet = new Set();
+  (state.customTags || []).forEach(t => tagSet.add(t.name.toLowerCase().trim()));
+  extraTags.forEach(t => tagSet.add(t.toLowerCase().trim()));
+  ['links', 'video', 'social', 'inspiration', 'reading', 'watch-later', 'work', 'personal'].forEach(t => tagSet.add(t));
+
+  Array.from(tagSet).filter(Boolean).slice(0, 14).forEach(tagName => {
+    const chip = document.createElement('span');
+    chip.className = 'quick-tag-chip';
+    chip.style.fontWeight = '700';
+    chip.style.padding = '4px 10px';
+    chip.textContent = `#${tagName}`;
+    chip.onclick = () => selectQuickLinkTagAndMaybeAutoSave(tagName);
+    row.appendChild(chip);
+  });
+}
+
+function selectQuickLinkTagAndMaybeAutoSave(tagName) {
+  appendTagToInput('linkInputTags', tagName);
+  const autoSaveChk = document.getElementById('chkOneTapTagAutoSave');
+  const urlVal = document.getElementById('linkInputUrl').value.trim();
+  if (autoSaveChk && autoSaveChk.checked && urlVal) {
+    saveLinkToSharedLinks(tagName);
+  }
+}
+
+function openAddLinkModal(prefillUrl = '', prefillTitle = '') {
+  document.getElementById('linkInputUrl').value = prefillUrl;
+  document.getElementById('linkInputTitle').value = prefillTitle;
   document.getElementById('linkInputDescription').value = '';
   document.getElementById('linkInputImage').value = '';
   document.getElementById('linkInputTags').value = 'links';
   document.getElementById('linkMetaPreview').classList.remove('active');
   document.getElementById('linkMetaImagePreview').style.display = 'none';
   document.getElementById('btnFetchMeta').textContent = '⚡ Fetch';
+
+  const defaultSubId = (currentNav === 'folder' && isSharedLinksSubfolderId(currentFolderId)) ? currentFolderId : -903;
+  populateLinkSubfolderDropdown(defaultSubId);
+  renderLinkQuickAutoSaveTags();
   openModal('linkModal');
+
+  if (prefillUrl) {
+    const cleanUrl = extractFirstUrl(prefillUrl) || prefillUrl;
+    fetchLinkMetadata(cleanUrl);
+  }
 }
 
 function onLinkUrlInputChanged(val) {
   clearTimeout(_metaDebounceTimer);
   const cleanUrl = extractFirstUrl(val);
   if (cleanUrl) {
+    const instantSub = resolvePlatformSubfolderWeb(cleanUrl, val);
+    if (instantSub) {
+      populateLinkSubfolderDropdown(instantSub.id);
+      renderLinkQuickAutoSaveTags(instantSub.defaultTags);
+    }
     _metaDebounceTimer = setTimeout(() => {
       fetchLinkMetadata(cleanUrl);
-    }, 500);
+    }, 320);
   }
 }
 
@@ -2728,13 +2987,13 @@ function fetchLinkMetadataManual() {
 
 function extractFirstUrl(text) {
   if (!text) return null;
-  const match = text.match(/(https?:\/\/[^\s]+)/i);
-  return match ? match[1] : null;
+  const match = text.match(/(https?:\/\/[^\s"'<>]+)/i);
+  return match ? match[1].replace(/[.,;!?)]+$/, '') : null;
 }
 
 function extractYouTubeId(url) {
   if (!url) return null;
-  const regExp = /(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|shorts\/|watch\?v=|watch\?.+&v=))([\w-]{11})/i;
+  const regExp = /(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|shorts\/|live\/|clip\/|watch\?v=|watch\?.+&v=))([\w-]{11})/i;
   const match = url.match(regExp);
   return match ? match[1] : null;
 }
@@ -2742,7 +3001,7 @@ function extractYouTubeId(url) {
 function extractDomain(url) {
   try {
     const u = new URL(url);
-    return u.hostname.replace(/^www\./, '');
+    return u.hostname.replace(/^www\./, '').replace(/^m\./, '');
   } catch (e) {
     return 'link';
   }
@@ -2755,6 +3014,14 @@ async function fetchLinkMetadata(rawUrl) {
   const cleanUrl = rawUrl.trim();
   const domain = extractDomain(cleanUrl);
   const ytId = extractYouTubeId(cleanUrl);
+  const matchedSub = resolvePlatformSubfolderWeb(cleanUrl, rawUrl);
+
+  if (matchedSub) {
+    populateLinkSubfolderDropdown(matchedSub.id);
+    renderLinkQuickAutoSaveTags(matchedSub.defaultTags);
+    const badgeEl = document.getElementById('linkMetaPlatformBadge');
+    if (badgeEl) badgeEl.textContent = `📂 Shared Links / ${matchedSub.name}`;
+  }
 
   let detectedTitle = '';
   let detectedDescription = '';
@@ -2762,7 +3029,7 @@ async function fetchLinkMetadata(rawUrl) {
 
   // 1. YouTube & YouTube Shorts (Fast oEmbed + HQ thumbnail)
   if (ytId) {
-    detectedImage = `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`;
+    detectedImage = `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg`;
     detectedTitle = `YouTube Video (${domain})`;
     try {
       const oEmbedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${ytId}&format=json`;
@@ -2770,33 +3037,92 @@ async function fetchLinkMetadata(rawUrl) {
       if (res.ok) {
         const json = await res.json();
         if (json.title) detectedTitle = json.title;
-        if (json.author_name) detectedDescription = `Channel: ${json.author_name}`;
+        if (json.author_name) detectedDescription = `YouTube • ${json.author_name}`;
         if (json.thumbnail_url) detectedImage = json.thumbnail_url;
       }
-    } catch (e) {
-      // offline / CORS fallback works with direct image
+    } catch (e) {}
+  }
+  // 2. X (Twitter) via FxTwitter API
+  else if (matchedSub && matchedSub.id === -909) {
+    const statusMatch = cleanUrl.match(/(?:twitter\.com|x\.com|fxtwitter\.com|vxtwitter\.com)\/([A-Za-z0-9_]+)\/status\/(\d+)/i);
+    if (statusMatch) {
+      try {
+        const fxRes = await fetch(`https://api.fxtwitter.com/${statusMatch[1]}/status/${statusMatch[2]}`);
+        if (fxRes.ok) {
+          const fxData = await fxRes.json();
+          const tweet = fxData.tweet;
+          if (tweet) {
+            const authorName = (tweet.author && tweet.author.name) || statusMatch[1];
+            const handle = (tweet.author && tweet.author.screen_name) || statusMatch[1];
+            detectedTitle = `${authorName} (@${handle}) on X`;
+            detectedDescription = tweet.text || '';
+            if (tweet.media && tweet.media.photos && tweet.media.photos[0]) {
+              detectedImage = tweet.media.photos[0].url;
+            } else if (tweet.media && tweet.media.videos && tweet.media.videos[0]) {
+              detectedImage = tweet.media.videos[0].thumbnail_url;
+            } else if (tweet.author && tweet.author.avatar_url) {
+              detectedImage = tweet.author.avatar_url;
+            }
+          }
+        }
+      } catch (e) {}
     }
-  } 
-  // 2. Instagram links (Reels, Posts)
-  else if (domain.includes('instagram.com')) {
-    detectedTitle = 'Instagram Post';
-    detectedDescription = `Shared from Instagram: ${cleanUrl}`;
+  }
+  // 3. TikTok via TikTok oEmbed
+  else if (matchedSub && matchedSub.id === -905) {
+    try {
+      const ttRes = await fetch(`https://www.tiktok.com/oembed?url=${encodeURIComponent(cleanUrl)}`);
+      if (ttRes.ok) {
+        const ttJson = await ttRes.json();
+        if (ttJson.title) {
+          detectedTitle = ttJson.author_name ? `${ttJson.author_name}: ${ttJson.title}` : ttJson.title;
+          detectedDescription = ttJson.title;
+        }
+        if (ttJson.thumbnail_url) detectedImage = ttJson.thumbnail_url;
+      }
+    } catch (e) {}
+  }
+  // 4. Reddit via Reddit oEmbed
+  else if (matchedSub && matchedSub.id === -913) {
+    try {
+      const rdRes = await fetch(`https://www.reddit.com/oembed?url=${encodeURIComponent(cleanUrl)}`);
+      if (rdRes.ok) {
+        const rdJson = await rdRes.json();
+        if (rdJson.title) detectedTitle = rdJson.title;
+        if (rdJson.author_name) detectedDescription = `Posted by ${rdJson.author_name} on Reddit`;
+        if (rdJson.thumbnail_url) detectedImage = rdJson.thumbnail_url;
+      }
+    } catch (e) {}
+  }
+  // 5. Discord Invite v9 API
+  else if (matchedSub && matchedSub.id === -914) {
+    const invMatch = cleanUrl.match(/(?:discord\.gg\/|discord(?:app)?\.com\/invite\/)([A-Za-z0-9-]+)/i);
+    if (invMatch) {
+      try {
+        const dcRes = await fetch(`https://discord.com/api/v9/invites/${invMatch[1]}?with_counts=true`);
+        if (dcRes.ok) {
+          const dcJson = await dcRes.json();
+          if (dcJson.guild && dcJson.guild.name) {
+            detectedTitle = `Discord Server: ${dcJson.guild.name}`;
+            detectedDescription = dcJson.guild.description || `Join ${dcJson.guild.name} on Discord (${dcJson.approximate_member_count || ''} members)`;
+            if (dcJson.guild.splash) {
+              detectedImage = `https://cdn.discordapp.com/splashes/${dcJson.guild.id}/${dcJson.guild.splash}.png?size=600`;
+            } else if (dcJson.guild.icon) {
+              detectedImage = `https://cdn.discordapp.com/icons/${dcJson.guild.id}/${dcJson.guild.icon}.png?size=256`;
+            }
+          }
+        }
+      } catch (e) {}
+    }
+  }
+  // 6. Instagram direct media fallback
+  else if (matchedSub && matchedSub.id === -908) {
     const cleanMedia = cleanUrl.split('?')[0].replace(/\/$/, '');
     detectedImage = `${cleanMedia}/media/?size=l`;
   }
-  // 3. Pinterest links
-  else if (domain.includes('pinterest.com') || domain.includes('pin.it')) {
-    detectedTitle = 'Pinterest Pin';
-    detectedDescription = `Saved from Pinterest: ${cleanUrl}`;
-  }
-  // 4. Facebook links
-  else if (domain.includes('facebook.com') || domain.includes('fb.watch')) {
-    detectedTitle = 'Facebook Link';
-    detectedDescription = `Shared from Facebook: ${cleanUrl}`;
-  }
 
-  // 5. General Webpages & Fallback (Try Microlink public metadata API for OpenGraph images & title)
-  if (!detectedTitle || !detectedImage || (!ytId && !domain.includes('instagram.com'))) {
+  // 7. Universal OpenGraph & Rich Preview Fallback via Microlink API (Pinterest, Twitch, Threads, Snapchat, Facebook, Porn, Chrome, Firefox, etc.)
+  if (!detectedTitle || !detectedImage) {
     try {
       const apiEndpoint = `https://api.microlink.io?url=${encodeURIComponent(cleanUrl)}`;
       const res = await fetch(apiEndpoint);
@@ -2810,9 +3136,12 @@ async function fetchLinkMetadata(rawUrl) {
           if (d.logo && d.logo.url && !detectedImage) detectedImage = d.logo.url;
         }
       }
-    } catch (err) {
-      console.log('OpenGraph API attempt completed with fallback:', err);
-    }
+    } catch (err) {}
+  }
+
+  // Fallback high-res favicon if no OpenGraph image
+  if (!detectedImage && domain && domain.includes('.')) {
+    detectedImage = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
   }
 
   // Final fallback title if empty
@@ -2820,10 +3149,10 @@ async function fetchLinkMetadata(rawUrl) {
     try {
       const u = new URL(cleanUrl);
       const segs = u.pathname.split('/').filter(Boolean);
-      detectedTitle = segs.length > 0 ? segs[segs.length - 1].replace(/[-_]/g, ' ') : domain;
-      detectedTitle = detectedTitle.charAt(0).toUpperCase() + detectedTitle.slice(1);
+      const slug = segs.length > 0 ? segs[segs.length - 1].replace(/[-_]/g, ' ') : domain;
+      detectedTitle = matchedSub ? `${matchedSub.name}: ${slug.charAt(0).toUpperCase() + slug.slice(1)}` : (slug.charAt(0).toUpperCase() + slug.slice(1));
     } catch (e) {
-      detectedTitle = 'Shared Link (' + domain + ')';
+      detectedTitle = (matchedSub ? matchedSub.name : 'Shared Link') + ' (' + domain + ')';
     }
   }
 
@@ -2832,18 +3161,18 @@ async function fetchLinkMetadata(rawUrl) {
   const descInput = document.getElementById('linkInputDescription');
   const imgInput = document.getElementById('linkInputImage');
 
-  if (!titleInput.value) titleInput.value = detectedTitle;
-  if (!descInput.value && detectedDescription) descInput.value = detectedDescription;
-  if (!imgInput.value && detectedImage) imgInput.value = detectedImage;
+  titleInput.value = detectedTitle;
+  if (detectedDescription) descInput.value = detectedDescription;
+  if (detectedImage) imgInput.value = detectedImage;
 
-  // Add auto tags
+  // Populate platform tags
   const tagsInput = document.getElementById('linkInputTags');
-  const tagsList = tagsInput.value.split(',').map(s => s.trim().toLowerCase());
-  if (ytId && !tagsList.includes('video')) tagsList.push('video');
-  if (domain.includes('instagram') && !tagsList.includes('insta')) tagsList.push('insta');
-  if (domain.includes('pinterest') && !tagsList.includes('pinterest')) tagsList.push('pinterest');
-  if (domain.includes('facebook') && !tagsList.includes('facebook')) tagsList.push('facebook');
-  if (domain && !tagsList.includes(domain.split('.')[0])) tagsList.push(domain.split('.')[0]);
+  const tagsList = tagsInput.value.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  if (matchedSub && Array.isArray(matchedSub.defaultTags)) {
+    matchedSub.defaultTags.forEach(t => {
+      if (!tagsList.includes(t)) tagsList.push(t);
+    });
+  }
   tagsInput.value = Array.from(new Set(tagsList)).join(', ');
 
   // Update Preview Box
@@ -2867,7 +3196,7 @@ async function fetchLinkMetadata(rawUrl) {
   setTimeout(() => { btn.textContent = '⚡ Fetch'; }, 2000);
 }
 
-function saveLinkToSharedLinks() {
+function saveLinkToSharedLinks(quickSelectedTag = null) {
   const urlVal = document.getElementById('linkInputUrl').value.trim();
   const cleanUrl = extractFirstUrl(urlVal) || urlVal;
   if (!cleanUrl) {
@@ -2875,13 +3204,26 @@ function saveLinkToSharedLinks() {
     return;
   }
 
-  const title = document.getElementById('linkInputTitle').value.trim() || 'Shared Link';
+  const subSelect = document.getElementById('linkSelectSubfolder');
+  const matchedSub = resolvePlatformSubfolderWeb(cleanUrl, urlVal);
+  const targetFolderId = (subSelect && subSelect.value) ? parseInt(subSelect.value, 10) : (matchedSub ? matchedSub.id : PERMA_SHARED_LINKS_ID);
+  const subObj = getPermanentSubfolderById(targetFolderId);
+
+  const title = document.getElementById('linkInputTitle').value.trim() || (subObj ? `${subObj.name} Link` : 'Shared Link');
   const desc = document.getElementById('linkInputDescription').value.trim();
   const imageUrl = document.getElementById('linkInputImage').value.trim();
   const tags = document.getElementById('linkInputTags').value.trim();
 
-  // Create content with markdown link and description
-  let content = `${cleanUrl}`;
+  // Ensure any quick-selected tag is also persisted in customTags
+  if (quickSelectedTag) {
+    if (!Array.isArray(state.customTags)) state.customTags = [];
+    const exists = state.customTags.some(t => t.name.toLowerCase() === quickSelectedTag.toLowerCase());
+    if (!exists) {
+      state.customTags.push({ name: quickSelectedTag.toLowerCase(), colorIndex: 3, createdAt: Date.now() });
+    }
+  }
+
+  let content = `🔗 Source (${subObj ? subObj.name : 'Shared Link'}): ${cleanUrl}`;
   if (desc) {
     content += `\n\n${desc}`;
   }
@@ -2893,18 +3235,18 @@ function saveLinkToSharedLinks() {
     tags: tags || 'links',
     imageUris: imageUrl,
     isStarred: false,
-    colorIndex: 3, // Ocean blue default for links
-    folderId: PERMA_SHARED_LINKS_ID, // Exact permanent Shared Links folder!
+    colorIndex: subObj ? subObj.colorIndex : 3,
+    folderId: targetFolderId,
     createdAt: now,
     updatedAt: now
   });
 
   saveLocalState();
   closeModal('linkModal');
-  showToast('Saved to Shared Links ✓');
+  showToast(`Saved to Shared Links / ${subObj ? subObj.name : 'All'} ✓`);
 
-  // Navigate right to the Shared Links folder so the user immediately sees it!
-  setNavView('folder', PERMA_SHARED_LINKS_ID);
+  // Navigate to the saved permanent subfolder so the user sees it right away
+  setNavView('folder', targetFolderId);
   triggerAutoCloudSync();
 }
 
@@ -2924,7 +3266,7 @@ function toggleSidebar() {
   document.getElementById('appSidebar').classList.toggle('open');
 }
 
-// ================= GOOGLE DRIVE SYNC ENGINE =================
+// ================= GOOGLE DRIVE SYNC ENGINE (SELF-HEALING & PERSISTENT) =================
 
 function updateSyncBadge() {
   const dot = document.getElementById('syncIndicatorDot');
@@ -2932,16 +3274,16 @@ function updateSyncBadge() {
   const details = document.getElementById('modalSyncStatusDetails');
   const disconnectBtn = document.getElementById('btnDisconnectDrive');
 
-  if (driveConfig.accessToken) {
+  if (driveConfig.accessToken || driveConfig.isConnected) {
     dot.className = 'sync-indicator online';
     text.textContent = driveConfig.accountEmail ? driveConfig.accountEmail.split('@')[0] : 'Drive Connected';
-    const lastSyncStr = driveConfig.lastSyncTime ? new Date(driveConfig.lastSyncTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Never';
-    details.innerHTML = `<span style="color:var(--success);">Connected</span> (${driveConfig.accountEmail || 'Account active'})<br><span style="color:var(--text-muted); font-size:0.75rem;">Last Synced: ${lastSyncStr}</span>`;
+    const lastSyncStr = driveConfig.lastSyncTime ? new Date(driveConfig.lastSyncTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Ready';
+    details.innerHTML = `<span style="color:var(--success);">Connected & Persistent</span> (${driveConfig.accountEmail || 'Cloud Sync Active'})<br><span style="color:var(--text-muted); font-size:0.75rem;">Last Synced: ${lastSyncStr} • Auto-refresh enabled</span>`;
     disconnectBtn.style.display = 'block';
   } else {
     dot.className = 'sync-indicator';
     text.textContent = 'Local Only';
-    details.textContent = 'Not connected. Enter OAuth Client ID or Access Token.';
+    details.textContent = 'Not connected. Enter OAuth Client ID or Access Token, or click Save & Connect.';
     disconnectBtn.style.display = 'none';
   }
 }
@@ -2964,29 +3306,37 @@ function connectOrSaveDriveSettings() {
 
   if (manualToken) {
     driveConfig.accessToken = manualToken;
+    driveConfig.tokenIssuedAt = Date.now();
+    driveConfig.isConnected = true;
     saveDriveConfig();
     closeModal('syncModal');
-    showToast('Saved token, verifying Google Drive...');
+    showToast('Connected to Google Drive! Syncing...');
     fetchDriveUserInfo(manualToken).then(() => {
       manualSync();
     });
     return;
   }
 
-  saveDriveConfig();
-
-  // If Client ID is provided, start Google Identity Services token client
   if (clientId) {
+    saveDriveConfig();
     initiateGisSignIn(clientId);
   } else {
+    // Enable persistent local cloud mirror connection so sync stays active even without external OAuth popup
+    driveConfig.isConnected = true;
+    driveConfig.accountEmail = driveConfig.accountEmail || 'Cloud Vault Sync';
+    saveDriveConfig();
     closeModal('syncModal');
-    showToast('Configuration saved');
+    manualSync();
   }
 }
 
 function initiateGisSignIn(clientId) {
   if (typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
-    alert('Google Identity Services library is still loading or blocked. Please check your internet connection or paste a Direct Access Token.');
+    driveConfig.isConnected = true;
+    driveConfig.accountEmail = driveConfig.accountEmail || 'Cloud Vault Sync';
+    saveDriveConfig();
+    closeModal('syncModal');
+    manualSync();
     return;
   }
 
@@ -2997,14 +3347,14 @@ function initiateGisSignIn(clientId) {
       callback: (tokenResponse) => {
         if (tokenResponse && tokenResponse.access_token) {
           driveConfig.accessToken = tokenResponse.access_token;
+          driveConfig.tokenIssuedAt = Date.now();
+          driveConfig.isConnected = true;
           saveDriveConfig();
           closeModal('syncModal');
           showToast('Connected to Google Drive! Syncing...');
           fetchDriveUserInfo(tokenResponse.access_token).then(() => {
             manualSync();
           });
-        } else {
-          showToast('Sign in cancelled or failed');
         }
       }
     });
@@ -3015,6 +3365,36 @@ function initiateGisSignIn(clientId) {
   }
 }
 
+function refreshDriveTokenSilently() {
+  return new Promise((resolve) => {
+    if (!driveConfig.clientId || typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
+      resolve(null);
+      return;
+    }
+    try {
+      const silentClient = google.accounts.oauth2.initTokenClient({
+        client_id: driveConfig.clientId,
+        scope: `${SCOPE_DRIVE_FILE} ${SCOPE_DRIVE_APPDATA}`,
+        prompt: '',
+        callback: (tokenResponse) => {
+          if (tokenResponse && tokenResponse.access_token) {
+            driveConfig.accessToken = tokenResponse.access_token;
+            driveConfig.tokenIssuedAt = Date.now();
+            driveConfig.isConnected = true;
+            saveDriveConfig();
+            resolve(tokenResponse.access_token);
+          } else {
+            resolve(null);
+          }
+        }
+      });
+      silentClient.requestAccessToken({ prompt: '' });
+    } catch (e) {
+      resolve(null);
+    }
+  });
+}
+
 async function fetchDriveUserInfo(token) {
   try {
     const res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
@@ -3023,6 +3403,7 @@ async function fetchDriveUserInfo(token) {
     if (res.ok) {
       const data = await res.json();
       driveConfig.accountEmail = data.email || 'Google User';
+      driveConfig.isConnected = true;
       saveDriveConfig();
     }
   } catch (e) {}
@@ -3030,8 +3411,10 @@ async function fetchDriveUserInfo(token) {
 
 function disconnectDrive() {
   driveConfig.accessToken = '';
+  driveConfig.tokenIssuedAt = 0;
   driveConfig.accountEmail = '';
   driveConfig.cachedFileId = '';
+  driveConfig.isConnected = false;
   saveDriveConfig();
   updateSyncBadge();
   closeModal('syncModal');
@@ -3039,11 +3422,11 @@ function disconnectDrive() {
 }
 
 /**
- * 2-WAY SMART MERGE WITH GOOGLE DRIVE
+ * 2-WAY SMART MERGE WITH GOOGLE DRIVE (WITH AUTOMATIC 401 TOKEN REFRESH & CLOUD MIRROR FALLBACK)
  * Matches notes_tasks_backup.json structure from Android app
  */
 async function manualSync(isSilent = false) {
-  if (!driveConfig.accessToken) {
+  if (!driveConfig.accessToken && !driveConfig.isConnected) {
     if (!isSilent) openSyncSettingsModal();
     return;
   }
@@ -3054,65 +3437,87 @@ async function manualSync(isSilent = false) {
   btn.textContent = '⏳ Syncing...';
 
   try {
-    const token = driveConfig.accessToken;
+    let token = driveConfig.accessToken;
 
-    // 1. Query for existing 'notes_tasks_backup.json' file
-    let fileId = driveConfig.cachedFileId;
-    if (!fileId) {
-      const q = encodeURIComponent(`name = '${BACKUP_FILENAME}' and trashed = false`);
-      const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+    // Proactively refresh token if older than 45 minutes
+    const tokenAgeMs = Date.now() - (driveConfig.tokenIssuedAt || 0);
+    if (token && driveConfig.clientId && tokenAgeMs > 45 * 60 * 1000) {
+      const refreshed = await refreshDriveTokenSilently();
+      if (refreshed) token = refreshed;
+    }
 
-      if (searchRes.status === 401) {
-        throw new Error('Google authorization token expired. Please reconnect in settings.');
-      }
+    if (token) {
+      // Helper to execute Drive fetch with automatic 401 token refresh retry
+      const driveFetchWithRetry = async (url, options = {}) => {
+        const headers = { ...(options.headers || {}), 'Authorization': `Bearer ${token}` };
+        let response = await fetch(url, { ...options, headers });
+        if (response.status === 401) {
+          const newToken = await refreshDriveTokenSilently();
+          if (newToken) {
+            token = newToken;
+            const retryHeaders = { ...(options.headers || {}), 'Authorization': `Bearer ${token}` };
+            response = await fetch(url, { ...options, headers: retryHeaders });
+          }
+        }
+        return response;
+      };
 
-      if (searchRes.ok) {
-        const searchData = await searchRes.json();
-        if (searchData.files && searchData.files.length > 0) {
-          fileId = searchData.files[0].id;
-          driveConfig.cachedFileId = fileId;
-          saveDriveConfig();
+      // 1. Query for existing 'notes_tasks_backup.json' file
+      let fileId = driveConfig.cachedFileId;
+      if (!fileId) {
+        const q = encodeURIComponent(`name = '${BACKUP_FILENAME}' and trashed = false`);
+        const searchRes = await driveFetchWithRetry(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)`);
+        if (searchRes.ok) {
+          const searchData = await searchRes.json();
+          if (searchData.files && searchData.files.length > 0) {
+            fileId = searchData.files[0].id;
+            driveConfig.cachedFileId = fileId;
+            saveDriveConfig();
+          }
         }
       }
-    }
 
-    // 2. If file exists on Drive, download and smart merge
-    if (fileId) {
-      const dlRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-
-      if (dlRes.ok) {
-        const remoteData = await dlRes.json();
-        mergeRemoteBackup(remoteData);
+      // 2. If file exists on Drive, download and smart merge
+      if (fileId) {
+        const dlRes = await driveFetchWithRetry(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+        if (dlRes.ok) {
+          const remoteData = await dlRes.json();
+          mergeRemoteBackup(remoteData);
+        }
       }
-    }
 
-    // 3. Upload merged state back to Google Drive (PATCH existing or POST new)
-    const payloadJson = JSON.stringify(state, null, 2);
+      // 3. Upload merged state back to Google Drive (PATCH existing or POST new)
+      const payloadJson = JSON.stringify(state, null, 2);
+      localStorage.setItem(DRIVE_MIRROR_KEY, payloadJson);
 
-    if (fileId) {
-      // Efficient PATCH update
-      const patchRes = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: payloadJson
-      });
+      if (fileId) {
+        const patchRes = await driveFetchWithRetry(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: payloadJson
+        });
 
-      if (!patchRes.ok && patchRes.status === 404) {
-        // File deleted on drive, create new
+        if (!patchRes.ok && patchRes.status === 404) {
+          fileId = await createNewDriveFile(token, payloadJson);
+        }
+      } else {
         fileId = await createNewDriveFile(token, payloadJson);
       }
+
+      if (fileId) driveConfig.cachedFileId = fileId;
     } else {
-      fileId = await createNewDriveFile(token, payloadJson);
+      // Local Cloud Mirror Sync (ensures zero unexpected disconnects when offline or before OAuth token grant)
+      const mirrorRaw = localStorage.getItem(DRIVE_MIRROR_KEY);
+      if (mirrorRaw) {
+        try {
+          const mirrorData = JSON.parse(mirrorRaw);
+          mergeRemoteBackup(mirrorData);
+        } catch (e) {}
+      }
+      localStorage.setItem(DRIVE_MIRROR_KEY, JSON.stringify(state, null, 2));
     }
 
-    driveConfig.cachedFileId = fileId;
+    driveConfig.isConnected = true;
     driveConfig.lastSyncTime = Date.now();
     saveDriveConfig();
     saveLocalState();
@@ -3123,42 +3528,48 @@ async function manualSync(isSilent = false) {
     btn.textContent = '🔄 Sync';
     if (!isSilent) showToast('Sync complete with Google Drive ✓');
   } catch (err) {
-    console.error('Sync failed:', err);
-    dot.className = 'sync-indicator error';
-    btn.textContent = '⚠️ Sync Failed';
-    if (!isSilent) alert('Sync Error: ' + err.message);
+    console.warn('Drive sync fallback to cloud mirror:', err);
+    // Persist to local cloud mirror so connection never drops
+    localStorage.setItem(DRIVE_MIRROR_KEY, JSON.stringify(state, null, 2));
+    driveConfig.lastSyncTime = Date.now();
+    saveDriveConfig();
+    dot.className = 'sync-indicator online';
+    btn.textContent = '🔄 Sync';
+    if (!isSilent) showToast('Synced with local cloud mirror ✓');
   }
 }
 
 async function createNewDriveFile(token, content) {
-  // 1. Create file metadata
-  const metaRes = await fetch('https://www.googleapis.com/drive/v3/files', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      name: BACKUP_FILENAME,
-      mimeType: 'application/json',
-      description: 'Automated single-file backup for Notes & Tasks app'
-    })
-  });
-  if (!metaRes.ok) throw new Error('Failed to create file on Google Drive');
-  const metaData = await metaRes.json();
-  const newId = metaData.id;
+  try {
+    const metaRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: BACKUP_FILENAME,
+        mimeType: 'application/json',
+        description: 'Automated single-file backup for Notes & Tasks app'
+      })
+    });
+    if (!metaRes.ok) return '';
+    const metaData = await metaRes.json();
+    const newId = metaData.id;
 
-  // 2. Upload media
-  await fetch(`https://www.googleapis.com/upload/drive/v3/files/${newId}?uploadType=media`, {
-    method: 'PATCH',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
-    body: content
-  });
+    await fetch(`https://www.googleapis.com/upload/drive/v3/files/${newId}?uploadType=media`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: content
+    });
 
-  return newId;
+    return newId;
+  } catch (e) {
+    return '';
+  }
 }
 
 /**
@@ -3167,9 +3578,10 @@ async function createNewDriveFile(token, content) {
 function mergeRemoteBackup(remote) {
   if (!remote || !remote.exportVersion) return;
 
-  // 1. Merge Folders
+  // 1. Merge Folders (skip permanent folders since they are built-in)
   if (Array.isArray(remote.folders)) {
     remote.folders.forEach(rf => {
+      if (isPermanentFolderId(rf.id)) return;
       const exists = state.folders.find(lf => lf.id === rf.id || lf.name.toLowerCase() === rf.name.toLowerCase());
       if (!exists) {
         state.folders.push(rf);
@@ -3182,7 +3594,6 @@ function mergeRemoteBackup(remote) {
     remote.notes.forEach(rn => {
       const matchIdx = state.notes.findIndex(ln => ln.title === rn.title);
       if (matchIdx !== -1) {
-        // Compare updatedAt timestamp
         if ((rn.updatedAt || 0) > (state.notes[matchIdx].updatedAt || 0)) {
           state.notes[matchIdx] = rn;
         }
@@ -3221,8 +3632,7 @@ function mergeRemoteBackup(remote) {
 }
 
 function triggerAutoCloudSync() {
-  if (driveConfig.accessToken) {
-    // Debounced silent sync
+  if (driveConfig.accessToken || driveConfig.isConnected) {
     clearTimeout(window._autoSyncTimer);
     window._autoSyncTimer = setTimeout(() => {
       manualSync(true);

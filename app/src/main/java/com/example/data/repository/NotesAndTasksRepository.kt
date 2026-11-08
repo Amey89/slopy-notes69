@@ -310,35 +310,29 @@ class NotesAndTasksRepository(
     }
 
     suspend fun exportDatabaseToJson(): String = withContext(Dispatchers.IO) {
-        // Explicitly include permanent system folders in JSON backup
-        val permanentFolders = listOf(
+        // Explicitly include all permanent system folders and Shared Links platform subfolders in JSON backup
+        val permanentFolders = FolderEntity.AllPermanentFolders.map { pf ->
             BackupFolder(
-                id = FolderEntity.COMPLETED_TASKS_FOLDER_ID,
-                name = FolderEntity.PermanentCompletedFolder.name,
-                folderType = FolderEntity.PermanentCompletedFolder.folderType,
-                parentFolderId = null,
-                colorIndex = FolderEntity.PermanentCompletedFolder.colorIndex,
-                createdAt = FolderEntity.PermanentCompletedFolder.createdAt
-            ),
-            BackupFolder(
-                id = FolderEntity.SHARED_LINKS_FOLDER_ID,
-                name = FolderEntity.PermanentSharedLinksFolder.name,
-                folderType = FolderEntity.PermanentSharedLinksFolder.folderType,
-                parentFolderId = null,
-                colorIndex = FolderEntity.PermanentSharedLinksFolder.colorIndex,
-                createdAt = FolderEntity.PermanentSharedLinksFolder.createdAt
-            )
-        )
-        val dbFolders = folderDao.getAllFoldersDirect().map {
-            BackupFolder(
-                id = it.id,
-                name = it.name,
-                folderType = it.folderType,
-                parentFolderId = it.parentFolderId,
-                colorIndex = it.colorIndex,
-                createdAt = it.createdAt
+                id = pf.id,
+                name = pf.name,
+                folderType = pf.folderType,
+                parentFolderId = pf.parentFolderId,
+                colorIndex = pf.colorIndex,
+                createdAt = pf.createdAt
             )
         }
+        val dbFolders = folderDao.getAllFoldersDirect()
+            .filter { !FolderEntity.isPermanentFolderId(it.id) }
+            .map {
+                BackupFolder(
+                    id = it.id,
+                    name = it.name,
+                    folderType = it.folderType,
+                    parentFolderId = it.parentFolderId,
+                    colorIndex = it.colorIndex,
+                    createdAt = it.createdAt
+                )
+            }
         val folders = permanentFolders + dbFolders
 
         val tags = tagDao.getAllTagsDirect().map {
@@ -411,8 +405,9 @@ class NotesAndTasksRepository(
             val folderIdMap = mutableMapOf<Long, Long>()
 
             // Pre-seed permanent folder IDs so notes/tasks mapped to them point to the system IDs
-            folderIdMap[FolderEntity.COMPLETED_TASKS_FOLDER_ID] = FolderEntity.COMPLETED_TASKS_FOLDER_ID
-            folderIdMap[FolderEntity.SHARED_LINKS_FOLDER_ID] = FolderEntity.SHARED_LINKS_FOLDER_ID
+            FolderEntity.AllPermanentFolders.forEach { pf ->
+                folderIdMap[pf.id] = pf.id
+            }
 
             for (f in payload.folders) {
                 if (f.id == FolderEntity.COMPLETED_TASKS_FOLDER_ID || f.name.equals("Completed Tasks", ignoreCase = true) || f.name.equals("Permanent Archive", ignoreCase = true)) {
@@ -423,6 +418,18 @@ class NotesAndTasksRepository(
                     folderIdMap[f.id] = FolderEntity.SHARED_LINKS_FOLDER_ID
                     continue
                 }
+                if (FolderEntity.isSharedLinksSubfolderId(f.id)) {
+                    folderIdMap[f.id] = f.id
+                    continue
+                }
+                val matchedPermanentSub = if (f.parentFolderId == FolderEntity.SHARED_LINKS_FOLDER_ID) {
+                    FolderEntity.matchPermanentSharedSubfolderByName(f.name)
+                } else null
+                if (matchedPermanentSub != null) {
+                    folderIdMap[f.id] = matchedPermanentSub.id
+                    continue
+                }
+
                 val newId = folderDao.insertFolder(
                     FolderEntity(
                         name = f.name,
@@ -444,8 +451,7 @@ class NotesAndTasksRepository(
 
             for (note in payload.notes) {
                 val mappedFolderId = when {
-                    note.folderId == FolderEntity.SHARED_LINKS_FOLDER_ID -> FolderEntity.SHARED_LINKS_FOLDER_ID
-                    note.folderId == FolderEntity.COMPLETED_TASKS_FOLDER_ID -> FolderEntity.COMPLETED_TASKS_FOLDER_ID
+                    FolderEntity.isPermanentFolderId(note.folderId) -> note.folderId
                     note.folderId != null -> folderIdMap[note.folderId] ?: note.folderId
                     else -> null
                 }
@@ -464,6 +470,9 @@ class NotesAndTasksRepository(
                 )
                 if (mappedFolderId != null) {
                     folderDao.insertNoteFolderCrossRef(com.example.data.model.NoteFolderCrossRef(noteId, mappedFolderId))
+                    if (FolderEntity.isSharedLinksSubfolderId(mappedFolderId)) {
+                        folderDao.insertNoteFolderCrossRef(com.example.data.model.NoteFolderCrossRef(noteId, FolderEntity.SHARED_LINKS_FOLDER_ID))
+                    }
                 }
                 importedCount++
             }
@@ -517,7 +526,7 @@ class NotesAndTasksRepository(
 
     suspend fun exportMarkdownZipBundle(context: Context): File = withContext(Dispatchers.IO) {
         val dbFolders = folderDao.getAllFoldersDirect()
-        val allFolders = (listOf(FolderEntity.PermanentCompletedFolder, FolderEntity.PermanentSharedLinksFolder) + dbFolders).distinctBy { it.id }
+        val allFolders = (FolderEntity.AllPermanentFolders + dbFolders).distinctBy { it.id }
         val notes = noteDao.getAllNotesDirect()
         val tasks = taskDao.getAllTasksWithSubtasksDirect()
         MarkdownZipBundleManager.exportZipBundle(
