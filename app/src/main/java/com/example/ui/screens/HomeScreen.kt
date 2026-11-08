@@ -125,6 +125,7 @@ fun HomeScreen(
     val onOpenNoteStable: (NoteEntity) -> Unit = remember(onOpenNote) { { note -> onOpenNote(note) } }
     val onToggleNoteStarStable: (NoteEntity) -> Unit = remember(viewModel) { { note -> viewModel.toggleNoteStar(note) } }
     val onDeleteNoteStable: (Long) -> Unit = remember(viewModel) { { id -> viewModel.deleteNote(id) } }
+    val onUpdateNoteContentStable: (NoteEntity, String) -> Unit = remember(viewModel) { { note, updated -> viewModel.updateNoteContent(note, updated) } }
 
     val onOpenTaskStable: (TaskWithSubtasks) -> Unit = remember(onOpenTask) { { task -> onOpenTask(task) } }
     val onToggleTaskCompletedStable: (Long, Boolean) -> Unit = remember(viewModel) { { id, isDone -> viewModel.toggleTaskCompleted(id, isDone) } }
@@ -218,59 +219,30 @@ fun HomeScreen(
             containerColor = if (backgroundPattern > 0) Color.Transparent else MaterialTheme.colorScheme.background,
             topBar = {
                 TopAppBar(
-                    navigationIcon = {
-                        Surface(
-                            onClick = {
-                                coroutineScope.launch { drawerState.open() }
-                            },
-                            shape = RoundedCornerShape(16.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
-                            modifier = Modifier
-                                .padding(start = 10.dp, end = 4.dp)
-                                .size(44.dp)
-                                .testTag("open_obsidian_side_panel_button")
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Default.Menu,
-                                    contentDescription = "Open Vault Folder Explorer",
-                                    tint = MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.size(21.dp)
-                                )
-                            }
-                        }
-                    },
                     title = {
-                        // Material 3 Expressive Interactive Vault / Folder Switcher Capsule Pill
+                        // Distraction-Free Interactive Vault / Folder Switcher Capsule Pill (single top-left button)
                         Surface(
-                            shape = RoundedCornerShape(22.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.68f),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
                             modifier = Modifier
-                                .clip(RoundedCornerShape(22.dp))
+                                .clip(RoundedCornerShape(20.dp))
                                 .clickable {
                                     coroutineScope.launch { drawerState.open() }
                                 }
                                 .testTag("topbar_vault_folder_switcher")
                         ) {
                             Row(
-                                modifier = Modifier.padding(start = 8.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
+                                modifier = Modifier.padding(start = 10.dp, end = 14.dp, top = 7.dp, bottom = 7.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 val currentFolder = selectedFolder
-                                val folderColor = when {
-                                    currentFolder == null -> MaterialTheme.colorScheme.primary
-                                    currentFolder.id == FolderEntity.COMPLETED_TASKS_FOLDER_ID -> Color(0xFF10B981)
-                                    FolderEntity.isSharedLinksFamilyId(currentFolder.id) -> Color(0xFF2563EB)
-                                    else -> FolderColors.getOrElse(currentFolder.colorIndex) { MaterialTheme.colorScheme.primary }
-                                }
                                 Box(
                                     modifier = Modifier
                                         .size(26.dp)
                                         .background(
-                                            folderColor.copy(alpha = 0.16f),
-                                            RoundedCornerShape(9.dp)
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                            RoundedCornerShape(8.dp)
                                         ),
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -282,7 +254,7 @@ fun HomeScreen(
                                             else -> Icons.Default.FolderOpen
                                         },
                                         contentDescription = null,
-                                        tint = folderColor,
+                                        tint = MaterialTheme.colorScheme.onSurface,
                                         modifier = Modifier.size(15.dp)
                                     )
                                 }
@@ -295,7 +267,7 @@ fun HomeScreen(
                                         else -> "All Vault Items"
                                     },
                                     style = MaterialTheme.typography.titleSmall.copy(
-                                        fontWeight = FontWeight.ExtraBold
+                                        fontWeight = FontWeight.Bold
                                     ),
                                     color = MaterialTheme.colorScheme.onSurface,
                                     maxLines = 1,
@@ -321,14 +293,15 @@ fun HomeScreen(
                             Surface(
                                 onClick = { showAddLinkDialog = true },
                                 shape = RoundedCornerShape(14.dp),
-                                color = Color(0xFF2563EB).copy(alpha = 0.12f),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
                                 modifier = Modifier.size(42.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         imageVector = Icons.Default.Link,
                                         contentDescription = "Save Link with Metadata",
-                                        tint = Color(0xFF2563EB),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
@@ -339,6 +312,7 @@ fun HomeScreen(
                                     onClick = onOpenSettings,
                                     shape = RoundedCornerShape(14.dp),
                                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
                                     modifier = Modifier.size(42.dp)
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
@@ -346,15 +320,10 @@ fun HomeScreen(
                                             is com.example.data.sync.DriveSyncState.Syncing -> Icons.Default.CloudSync
                                             else -> Icons.Default.CloudDone
                                         }
-                                        val tint = when (driveSyncState) {
-                                            is com.example.data.sync.DriveSyncState.Error -> MaterialTheme.colorScheme.error
-                                            is com.example.data.sync.DriveSyncState.Syncing -> MaterialTheme.colorScheme.primary
-                                            else -> Color(0xFF16A34A)
-                                        }
                                         Icon(
                                             imageVector = icon,
                                             contentDescription = "Google Drive Sync",
-                                            tint = tint,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.size(20.dp)
                                         )
                                     }
@@ -365,6 +334,7 @@ fun HomeScreen(
                                 onClick = onOpenSettings,
                                 shape = RoundedCornerShape(14.dp),
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
                                 modifier = Modifier.size(42.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
@@ -534,11 +504,11 @@ fun HomeScreen(
                                 Surface(
                                     onClick = { viewModel.selectFolder(FolderEntity.PermanentSharedLinksFolder) },
                                     shape = RoundedCornerShape(12.dp),
-                                    color = if (isRootSharedSelected) Color(0xFF2563EB).copy(alpha = 0.18f)
+                                    color = if (isRootSharedSelected) MaterialTheme.colorScheme.primaryContainer
                                     else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
                                     border = BorderStroke(
                                         width = if (isRootSharedSelected) 1.5.dp else 1.dp,
-                                        color = if (isRootSharedSelected) Color(0xFF2563EB)
+                                        color = if (isRootSharedSelected) MaterialTheme.colorScheme.primary
                                         else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
                                     )
                                 ) {
@@ -549,15 +519,15 @@ fun HomeScreen(
                                         Icon(
                                             imageVector = Icons.Default.Link,
                                             contentDescription = null,
-                                            tint = if (isRootSharedSelected) Color(0xFF2563EB) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            tint = if (isRootSharedSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.size(15.dp)
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
                                             text = "All Shared ($allSharedCount)",
                                             fontSize = 12.sp,
-                                            fontWeight = if (isRootSharedSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
-                                            color = if (isRootSharedSelected) Color(0xFF2563EB) else MaterialTheme.colorScheme.onSurface
+                                            fontWeight = if (isRootSharedSelected) FontWeight.Bold else FontWeight.SemiBold,
+                                            color = if (isRootSharedSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
                                         )
                                     }
                                 }
@@ -565,15 +535,14 @@ fun HomeScreen(
                                 FolderEntity.PermanentSharedLinkSubfolders.forEach { subfolder ->
                                     val subCount = folderNotesCountMap[subfolder.id] ?: 0
                                     val isSubSelected = selectedFolder?.id == subfolder.id
-                                    val subColor = FolderColors.getOrElse(subfolder.colorIndex) { Color(0xFF2563EB) }
                                     Surface(
                                         onClick = { viewModel.selectFolder(subfolder) },
                                         shape = RoundedCornerShape(12.dp),
-                                        color = if (isSubSelected) subColor.copy(alpha = 0.18f)
+                                        color = if (isSubSelected) MaterialTheme.colorScheme.primaryContainer
                                         else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                                         border = BorderStroke(
                                             width = if (isSubSelected) 1.5.dp else 1.dp,
-                                            color = if (isSubSelected) subColor
+                                            color = if (isSubSelected) MaterialTheme.colorScheme.primary
                                             else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
                                         )
                                     ) {
@@ -584,15 +553,15 @@ fun HomeScreen(
                                             Icon(
                                                 imageVector = if (isSubSelected) Icons.Default.FolderOpen else Icons.Default.Folder,
                                                 contentDescription = null,
-                                                tint = subColor,
+                                                tint = if (isSubSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                                                 modifier = Modifier.size(14.dp)
                                             )
                                             Spacer(modifier = Modifier.width(5.dp))
                                             Text(
                                                 text = if (subCount > 0) "${subfolder.name} ($subCount)" else subfolder.name,
                                                 fontSize = 12.sp,
-                                                fontWeight = if (isSubSelected) FontWeight.ExtraBold else FontWeight.Medium,
-                                                color = if (isSubSelected) subColor else MaterialTheme.colorScheme.onSurface
+                                                fontWeight = if (isSubSelected) FontWeight.Bold else FontWeight.Medium,
+                                                color = if (isSubSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
                                             )
                                         }
                                     }
@@ -601,13 +570,13 @@ fun HomeScreen(
                         }
                     }
 
-                    // 2. Tasks Section (Material 3 Expressive Header Pill)
+                    // 2. Tasks Section (Neutral Header Pill)
                     val showTasks = (activeFilter in listOf(SearchFilter.ALL, SearchFilter.TASKS, SearchFilter.REMINDERS, SearchFilter.STARRED, SearchFilter.FOLDERS))
 
                     if (showTasks && taskUiItems.isNotEmpty()) {
                         item(key = "tasks_header", contentType = "header") {
                             val isCompletedFolder = selectedFolder?.id == FolderEntity.COMPLETED_TASKS_FOLDER_ID
-                            val accentColor = if (isCompletedFolder) Color(0xFF10B981) else MaterialTheme.colorScheme.primary
+                            val accentColor = MaterialTheme.colorScheme.onSurfaceVariant
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -678,7 +647,7 @@ fun HomeScreen(
                     if (showNotes && noteUiItems.isNotEmpty()) {
                         item(key = "notes_header", contentType = "header") {
                             val isLinksFolder = FolderEntity.isSharedLinksFamilyId(selectedFolder?.id)
-                            val accentColor = if (isLinksFolder) Color(0xFF2563EB) else MaterialTheme.colorScheme.secondary
+                            val accentColor = MaterialTheme.colorScheme.onSurfaceVariant
                             Spacer(modifier = Modifier.height(4.dp))
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -741,7 +710,8 @@ fun HomeScreen(
                                 onClick = onOpenNoteStable,
                                 onToggleStar = onToggleNoteStarStable,
                                 onDelete = onDeleteNoteStable,
-                                performanceMode = performanceMode
+                                performanceMode = performanceMode,
+                                onChecklistToggle = onUpdateNoteContentStable
                             )
                         }
                     }
@@ -884,8 +854,8 @@ fun HomeScreen(
                 // 3. New Link (Metadata Extractor)
                 ActionSheetItem(
                     icon = Icons.Default.Link,
-                    iconBgColor = Color(0xFFDBEAFE),
-                    iconTint = Color(0xFF2563EB),
+                    iconBgColor = MaterialTheme.colorScheme.surfaceVariant,
+                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
                     title = "Save Link with Metadata",
                     subtitle = "Extract image & preview from YouTube, Insta, Web",
                     onClick = {

@@ -58,8 +58,18 @@ class NotesTasksViewModel(application: Application) : AndroidViewModel(applicati
         prefs.edit().putInt("pref_dark_mode", mode).apply()
     }
 
-    // Theme Preset: 0 = Slate, 1 = Warm Amber, 2 = Midnight AMOLED, 3 = Emerald Forest, 4 = Twilight, 5 = Ocean
-    private val _themePreset = MutableStateFlow(prefs.getInt("pref_theme_preset", 0))
+    // Theme Preset: 0 = Neutral Grey (Default), 7 = Slate Stone, 1 = Warm Parchment, 2 = Midnight AMOLED, 3 = Botanical Sage, 4 = Muted Dusk, 5 = Nordic Slate, 6 = Material You
+    private val _themePreset = MutableStateFlow(
+        if (!prefs.getBoolean("pref_neutral_grey_default_v1", false)) {
+            prefs.edit()
+                .putInt("pref_theme_preset", 0)
+                .putBoolean("pref_neutral_grey_default_v1", true)
+                .apply()
+            0
+        } else {
+            prefs.getInt("pref_theme_preset", 0)
+        }
+    )
     val themePreset: StateFlow<Int> = _themePreset.asStateFlow()
 
     fun setThemePreset(preset: Int) {
@@ -454,6 +464,25 @@ class NotesTasksViewModel(application: Application) : AndroidViewModel(applicati
     fun toggleNoteStar(note: NoteEntity) {
         viewModelScope.launch {
             repository.toggleNoteStar(note.id, note.isStarred)
+            NotesTasksAppWidget.notifyWidgetUpdate(getApplication())
+        }
+    }
+
+    fun updateNoteContent(note: NoteEntity, newContent: String) {
+        viewModelScope.launch {
+            val existingFolderIds = repository.getFolderIdsForNote(note.id)
+            val folderIds = if (existingFolderIds.isNotEmpty()) {
+                existingFolderIds
+            } else if (note.folderId != null) {
+                listOf(note.folderId)
+            } else {
+                emptyList()
+            }
+            val updatedNote = note.copy(
+                content = newContent,
+                updatedAt = System.currentTimeMillis()
+            )
+            repository.saveNoteWithFolders(updatedNote, folderIds)
             NotesTasksAppWidget.notifyWidgetUpdate(getApplication())
         }
     }
@@ -1008,9 +1037,10 @@ class NotesTasksViewModel(application: Application) : AndroidViewModel(applicati
 }
 
 private val CLEAN_MARKDOWN_REGEX = Regex("[#*`_~>\\[\\]]")
-private val HighPriorityColor = Color(0xFFDC2626)
-private val MediumPriorityColor = Color(0xFFD97706)
-private val LowPriorityColor = Color(0xFF3B82F6)
+private val LEADING_TITLE_MARKDOWN_REGEX = Regex("^(\\s*(?:[-*•]\\s*\\[[ xX]?\\]\\s*|\\[[ xX]?\\]\\s*|#{1,6}\\s+|[-*•]\\s+|1\\.\\s+))+")
+private val HighPriorityColor = Color(0xFF71717A)
+private val MediumPriorityColor = Color(0xFF52525B)
+private val LowPriorityColor = Color(0xFF78716C)
 
 private fun NoteEntity.toUiItem(isPerformanceMode: Boolean): NoteUiItem {
     val isSharedLink = FolderEntity.isSharedLinksFamilyId(folderId)
@@ -1032,7 +1062,8 @@ private fun NoteEntity.toUiItem(isPerformanceMode: Boolean): NoteUiItem {
         it.removePrefix("https://").removePrefix("http://").take(42)
     }
 
-    val displayTitle = title.ifBlank { if (isSharedLink) "Shared Link" else "Untitled Note" }
+    val rawTitle = title.ifBlank { if (isSharedLink) "Shared Link" else "Untitled Note" }
+    val displayTitle = LEADING_TITLE_MARKDOWN_REGEX.replace(rawTitle.trim(), "").trim().ifBlank { rawTitle }
 
     val cleanPreview = if (content.isNotBlank()) {
         var text = content

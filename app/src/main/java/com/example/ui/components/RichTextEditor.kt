@@ -1,6 +1,9 @@
 package com.example.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -8,7 +11,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -27,14 +29,13 @@ import androidx.compose.material.icons.filled.Title
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.AnnotatedString
@@ -46,9 +47,31 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+/**
+ * Matches all markdown checklist variations:
+ * - [ ] task
+ * - [] task
+ * - []task
+ * - [x] task / - [X] task
+ * * [ ] task / • [ ] task
+ * [ ] task / [] task / [x] task
+ */
+val CHECKLIST_LINE_REGEX = Regex("^(\\s*(?:[-*•]\\s*)?)\\[([ xX]?)\\]\\s*(.*)$")
+
+private val LEADING_MARKDOWN_PREFIX_REGEX = Regex("^(\\s*(?:[-*•]\\s*\\[[ xX]?\\]\\s*|\\[[ xX]?\\]\\s*|#{1,6}\\s+|[-*•]\\s+|1\\.\\s+))+")
+
+fun stripLeadingMarkdownPrefix(raw: String): String {
+    val cleaned = LEADING_MARKDOWN_PREFIX_REGEX.replace(raw.trim(), "").trim()
+    return cleaned.ifBlank { raw.trim() }
+}
+
+/**
+ * Compact, single-row horizontally scrollable formatting bar.
+ */
 @Composable
 fun RichTextFormattingToolbar(
     textValue: TextFieldValue,
@@ -57,113 +80,132 @@ fun RichTextFormattingToolbar(
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
     ) {
         Row(
             modifier = Modifier
+                .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 6.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(2.dp)
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            FormatIconButton(
-                icon = Icons.Default.FormatBold,
-                tooltip = "Bold",
-                onClick = { onValueChange(applyWrapping(textValue, "**", "**")) }
-            )
-            FormatIconButton(
-                icon = Icons.Default.FormatItalic,
-                tooltip = "Italic",
-                onClick = { onValueChange(applyWrapping(textValue, "*", "*")) }
-            )
-            FormatIconButton(
-                icon = Icons.Default.FormatStrikethrough,
-                tooltip = "Strikethrough",
-                onClick = { onValueChange(applyWrapping(textValue, "~~", "~~")) }
-            )
-            FormatIconButton(
+            FormatActionChip(
                 icon = Icons.Default.Title,
-                tooltip = "Heading 1",
                 label = "H1",
-                onClick = { onValueChange(applyLinePrefix(textValue, "# ")) }
+                onClick = { onValueChange(insertLinePrefix(textValue, "# ")) }
             )
-            FormatIconButton(
+            FormatActionChip(
                 icon = Icons.Default.Title,
-                tooltip = "Heading 2",
                 label = "H2",
-                onClick = { onValueChange(applyLinePrefix(textValue, "## ")) }
+                onClick = { onValueChange(insertLinePrefix(textValue, "## ")) }
             )
-            FormatIconButton(
+            FormatActionChip(
+                icon = Icons.Default.FormatBold,
+                label = "Bold",
+                onClick = { onValueChange(wrapSelection(textValue, "**", "**", "bold")) }
+            )
+            FormatActionChip(
+                icon = Icons.Default.FormatItalic,
+                label = "Italic",
+                onClick = { onValueChange(wrapSelection(textValue, "*", "*", "italic")) }
+            )
+            FormatActionChip(
+                icon = Icons.Default.FormatStrikethrough,
+                label = "Strike",
+                onClick = { onValueChange(wrapSelection(textValue, "~~", "~~", "strike")) }
+            )
+            FormatActionChip(
                 icon = Icons.Default.FormatListBulleted,
-                tooltip = "Bullet List",
-                onClick = { onValueChange(applyLinePrefix(textValue, "• ")) }
+                label = "Bullet",
+                onClick = { onValueChange(insertLinePrefix(textValue, "• ")) }
             )
-            FormatIconButton(
+            FormatActionChip(
                 icon = Icons.Default.CheckBox,
-                tooltip = "Checkbox item",
-                onClick = { onValueChange(applyLinePrefix(textValue, "- [ ] ")) }
+                label = "Check",
+                onClick = { onValueChange(insertLinePrefix(textValue, "- [ ] ")) }
             )
-            FormatIconButton(
+            FormatActionChip(
                 icon = Icons.Default.FormatQuote,
-                tooltip = "Quote",
-                onClick = { onValueChange(applyLinePrefix(textValue, "> ")) }
+                label = "Quote",
+                onClick = { onValueChange(insertLinePrefix(textValue, "> ")) }
             )
-            FormatIconButton(
+            FormatActionChip(
                 icon = Icons.Default.Code,
-                tooltip = "Inline Code",
-                onClick = { onValueChange(applyWrapping(textValue, "`", "`")) }
+                label = "Code",
+                onClick = { onValueChange(wrapSelection(textValue, "`", "`", "code")) }
             )
         }
     }
 }
 
 @Composable
-private fun FormatIconButton(
+private fun FormatActionChip(
     icon: ImageVector,
-    tooltip: String,
-    label: String? = null,
+    label: String,
     onClick: () -> Unit
 ) {
-    IconButton(
+    Surface(
         onClick = onClick,
-        modifier = Modifier.size(38.dp),
-        colors = IconButtonDefaults.iconButtonColors(
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        shape = RoundedCornerShape(8.dp),
+        color = Color.Transparent
     ) {
-        if (label != null) {
-            Text(text = label, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-        } else {
-            Icon(icon, contentDescription = tooltip, modifier = Modifier.size(20.dp))
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = label,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
 
-private fun applyWrapping(value: TextFieldValue, prefix: String, suffix: String): TextFieldValue {
-    val text = value.text
-    val selection = value.selection
-    return if (selection.start != selection.end) {
-        val selectedText = text.substring(selection.start, selection.end)
-        val newText = text.replaceRange(selection.start, selection.end, "$prefix$selectedText$suffix")
+private fun wrapSelection(
+    tfv: TextFieldValue,
+    prefix: String,
+    suffix: String,
+    placeholder: String
+): TextFieldValue {
+    val text = tfv.text
+    val start = tfv.selection.min.coerceIn(0, text.length)
+    val end = tfv.selection.max.coerceIn(0, text.length)
+
+    return if (start != end) {
+        val selected = text.substring(start, end)
+        val newText = text.substring(0, start) + prefix + selected + suffix + text.substring(end)
         TextFieldValue(
             text = newText,
-            selection = TextRange(selection.start + prefix.length, selection.end + prefix.length)
+            selection = TextRange(start + prefix.length, end + prefix.length)
         )
     } else {
-        val newText = text.substring(0, selection.start) + prefix + suffix + text.substring(selection.start)
+        val insert = prefix + placeholder + suffix
+        val newText = text.substring(0, start) + insert + text.substring(end)
         TextFieldValue(
             text = newText,
-            selection = TextRange(selection.start + prefix.length)
+            selection = TextRange(start + prefix.length, start + prefix.length + placeholder.length)
         )
     }
 }
 
-private fun applyLinePrefix(value: TextFieldValue, prefix: String): TextFieldValue {
-    val text = value.text
-    val cursor = value.selection.start
-    val startOfLine = text.lastIndexOf('\n', cursor - 1) + 1
-    val newText = text.substring(0, startOfLine) + prefix + text.substring(startOfLine)
+private fun insertLinePrefix(tfv: TextFieldValue, prefix: String): TextFieldValue {
+    val text = tfv.text
+    val cursor = tfv.selection.min.coerceIn(0, text.length)
+    val lineStart = text.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)).let { if (it == -1) 0 else it + 1 }
+
+    val newText = text.substring(0, lineStart) + prefix + text.substring(lineStart)
     return TextFieldValue(
         text = newText,
         selection = TextRange(cursor + prefix.length)
@@ -171,209 +213,314 @@ private fun applyLinePrefix(value: TextFieldValue, prefix: String): TextFieldVal
 }
 
 /**
- * RichTextViewer renders formatted markdown notes gracefully with support for:
- * - H1, H2 Headings
- * - Interactive checklists (- [ ] / - [x])
- * - Bullet lists (• or -)
- * - Blockquotes
- * - Inline bold, italics, code
+ * Interactive Rich Markdown Renderer for both full Note Preview and Note Cards on the Home screen.
+ * Supports H1/H2/H3, Bold, Italic, Strikethrough, Inline Code, Quotes, Bullets, and Interactive Checklists
+ * (including `- [ ]`, `- []`, `- [x]`, `[ ]`, `[x]`).
  */
 @Composable
 fun RichTextViewer(
     markdownContent: String,
+    onChecklistToggle: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
-    onChecklistToggle: ((updatedContent: String) -> Unit)? = null
+    compactCardMode: Boolean = false,
+    maxLines: Int = Int.MAX_VALUE,
+    skipUrls: Boolean = false
 ) {
-    val lines = markdownContent.lines()
+    val allLines = markdownContent.split("\n")
+    val indexedVisibleLines = allLines.mapIndexedNotNull { index, line ->
+        val trimmed = line.trim()
+        if (skipUrls && (trimmed.startsWith("http://") || trimmed.startsWith("https://"))) {
+            null
+        } else if (compactCardMode && trimmed.isBlank()) {
+            null
+        } else {
+            index to line
+        }
+    }
 
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        lines.forEachIndexed { lineIndex, rawLine ->
-            val trimmed = rawLine.trim()
+    val displayedLines = if (maxLines < Int.MAX_VALUE) {
+        indexedVisibleLines.take(maxLines)
+    } else {
+        indexedVisibleLines
+    }
+    val hiddenCount = (indexedVisibleLines.size - displayedLines.size).coerceAtLeast(0)
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(if (compactCardMode) 5.dp else 6.dp)
+    ) {
+        displayedLines.forEach { (originalIndex, line) ->
+            val trimmed = line.trim()
+            val checklistMatch = CHECKLIST_LINE_REGEX.matchEntire(trimmed)
             when {
+                checklistMatch != null -> {
+                    val isChecked = checklistMatch.groupValues[2].equals("x", ignoreCase = true)
+                    val itemText = checklistMatch.groupValues[3].trim()
+
+                    val toggleAction = {
+                        if (onChecklistToggle != null) {
+                            val newLines = allLines.toMutableList()
+                            newLines[originalIndex] = if (!isChecked) "- [x] $itemText" else "- [ ] $itemText"
+                            onChecklistToggle(newLines.joinToString("\n"))
+                        }
+                    }
+
+                    if (compactCardMode) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable(enabled = onChecklistToggle != null) { toggleAction() }
+                                .padding(vertical = 3.dp, horizontal = 2.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .background(
+                                        color = if (isChecked) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                        shape = RoundedCornerShape(6.dp)
+                                    )
+                                    .border(
+                                        width = if (isChecked) 0.dp else 1.5.dp,
+                                        color = if (isChecked) Color.Transparent
+                                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                                        shape = RoundedCornerShape(6.dp)
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (isChecked) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = "Checked",
+                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = parseInlineMarkdown(itemText),
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    textDecoration = if (isChecked) TextDecoration.LineThrough else TextDecoration.None,
+                                    color = if (isChecked) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
+                                    else MaterialTheme.colorScheme.onSurface
+                                ),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    } else {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable(enabled = onChecklistToggle != null) { toggleAction() }
+                                .padding(vertical = 2.dp)
+                        ) {
+                            Checkbox(
+                                checked = isChecked,
+                                onCheckedChange = if (onChecklistToggle != null) {
+                                    { toggleAction() }
+                                } else null,
+                                colors = CheckboxDefaults.colors(
+                                    checkedColor = MaterialTheme.colorScheme.primary,
+                                    uncheckedColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                ),
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = parseInlineMarkdown(itemText),
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    textDecoration = if (isChecked) TextDecoration.LineThrough else TextDecoration.None,
+                                    color = if (isChecked) MaterialTheme.colorScheme.onSurfaceVariant
+                                    else MaterialTheme.colorScheme.onSurface
+                                )
+                            )
+                        }
+                    }
+                }
                 trimmed.startsWith("# ") -> {
                     Text(
                         text = parseInlineMarkdown(trimmed.removePrefix("# ")),
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        ),
-                        modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
+                        style = if (compactCardMode) {
+                            MaterialTheme.typography.titleSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        } else {
+                            MaterialTheme.typography.headlineSmall.copy(
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     )
                 }
                 trimmed.startsWith("## ") -> {
                     Text(
                         text = parseInlineMarkdown(trimmed.removePrefix("## ")),
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.secondary
-                        ),
-                        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                        style = if (compactCardMode) {
+                            MaterialTheme.typography.bodyLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        } else {
+                            MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     )
                 }
-                trimmed.startsWith("- [ ] ") || trimmed.startsWith("- [x] ") -> {
-                    val isChecked = trimmed.startsWith("- [x] ")
-                    val itemText = trimmed.substring(6)
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 1.dp)
-                    ) {
-                        Checkbox(
-                            checked = isChecked,
-                            onCheckedChange = { checked ->
-                                if (onChecklistToggle != null) {
-                                    val newPrefix = if (checked) "- [x] " else "- [ ] "
-                                    val newLines = lines.toMutableList()
-                                    newLines[lineIndex] = newPrefix + itemText
-                                    onChecklistToggle(newLines.joinToString("\n"))
-                                }
-                            },
-                            colors = CheckboxDefaults.colors(
-                                checkedColor = MaterialTheme.colorScheme.primary,
-                                checkmarkColor = MaterialTheme.colorScheme.onPrimary
-                            ),
-                            modifier = Modifier.size(24.dp)
+                trimmed.startsWith("### ") -> {
+                    Text(
+                        text = parseInlineMarkdown(trimmed.removePrefix("### ")),
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = parseInlineMarkdown(itemText),
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                textDecoration = if (isChecked) TextDecoration.LineThrough else TextDecoration.None,
-                                color = if (isChecked) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                else MaterialTheme.colorScheme.onSurface
-                            )
-                        )
-                    }
+                    )
                 }
-                trimmed.startsWith("• ") || trimmed.startsWith("- ") -> {
-                    val bulletText = if (trimmed.startsWith("• ")) trimmed.removePrefix("• ") else trimmed.removePrefix("- ")
+                trimmed.startsWith("• ") || trimmed.startsWith("- ") || trimmed.startsWith("* ") -> {
+                    val bulletText = trimmed.drop(2).trimStart()
                     Row(
-                        modifier = Modifier.padding(start = 6.dp, top = 2.dp, bottom = 2.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.Top
                     ) {
                         Text(
                             text = "•",
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            ),
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(end = 8.dp)
                         )
                         Text(
                             text = parseInlineMarkdown(bulletText),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                color = MaterialTheme.colorScheme.onSurface
+                            ),
+                            maxLines = if (compactCardMode) 2 else Int.MAX_VALUE,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
                 trimmed.startsWith("> ") -> {
-                    Row(
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 2.dp)
+                            .background(
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                RoundedCornerShape(6.dp)
+                            )
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .width(3.dp)
-                                .height(22.dp)
-                                .background(
-                                    MaterialTheme.colorScheme.secondary,
-                                    RoundedCornerShape(2.dp)
-                                )
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = parseInlineMarkdown(trimmed.removePrefix("> ")),
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontStyle = FontStyle.Italic,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            ),
+                            maxLines = if (compactCardMode) 2 else Int.MAX_VALUE,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
-                trimmed.isBlank() -> {
-                    Spacer(modifier = Modifier.height(6.dp))
-                }
-                else -> {
+                trimmed.isNotBlank() -> {
                     Text(
-                        text = parseInlineMarkdown(rawLine),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface
+                        text = parseInlineMarkdown(line),
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = if (compactCardMode) MaterialTheme.colorScheme.onSurfaceVariant
+                            else MaterialTheme.colorScheme.onSurface,
+                            lineHeight = 20.sp
+                        ),
+                        maxLines = if (compactCardMode) 3 else Int.MAX_VALUE,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
         }
+
+        if (compactCardMode && hiddenCount > 0) {
+            Text(
+                text = "+$hiddenCount more line${if (hiddenCount > 1) "s" else ""}…",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                ),
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
     }
 }
 
-/**
- * Basic markdown parser converting **bold**, *italic*, ~~strike~~, `code` into AnnotatedString
- */
-fun parseInlineMarkdown(text: String): AnnotatedString {
+@Composable
+fun parseInlineMarkdown(input: String): AnnotatedString {
+    val codeBg = MaterialTheme.colorScheme.surfaceVariant
+    val primaryColor = MaterialTheme.colorScheme.primary
+
     return buildAnnotatedString {
         var i = 0
-        while (i < text.length) {
+        val n = input.length
+        while (i < n) {
             when {
-                text.startsWith("**", i) -> {
-                    val end = text.indexOf("**", i + 2)
-                    if (end != -1) {
-                        val boldText = text.substring(i + 2, end)
+                input.startsWith("**", i) -> {
+                    val close = input.indexOf("**", i + 2)
+                    if (close != -1) {
                         pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
-                        append(boldText)
+                        append(input.substring(i + 2, close))
                         pop()
-                        i = end + 2
+                        i = close + 2
                     } else {
-                        append(text[i])
+                        append(input[i])
                         i++
                     }
                 }
-                text.startsWith("~~", i) -> {
-                    val end = text.indexOf("~~", i + 2)
-                    if (end != -1) {
-                        val strikeText = text.substring(i + 2, end)
+                input.startsWith("~~", i) -> {
+                    val close = input.indexOf("~~", i + 2)
+                    if (close != -1) {
                         pushStyle(SpanStyle(textDecoration = TextDecoration.LineThrough))
-                        append(strikeText)
+                        append(input.substring(i + 2, close))
                         pop()
-                        i = end + 2
+                        i = close + 2
                     } else {
-                        append(text[i])
+                        append(input[i])
                         i++
                     }
                 }
-                text.startsWith("`", i) -> {
-                    val end = text.indexOf("`", i + 1)
-                    if (end != -1) {
-                        val codeText = text.substring(i + 1, end)
+                input.startsWith("`", i) -> {
+                    val close = input.indexOf("`", i + 1)
+                    if (close != -1) {
                         pushStyle(
                             SpanStyle(
                                 fontFamily = FontFamily.Monospace,
-                                background = Color(0x22808080)
+                                background = codeBg,
+                                color = primaryColor
                             )
                         )
-                        append(codeText)
+                        append(" " + input.substring(i + 1, close) + " ")
                         pop()
-                        i = end + 1
+                        i = close + 1
                     } else {
-                        append(text[i])
+                        append(input[i])
                         i++
                     }
                 }
-                text.startsWith("*", i) -> {
-                    val end = text.indexOf("*", i + 1)
-                    if (end != -1) {
-                        val italicText = text.substring(i + 1, end)
+                input.startsWith("*", i) -> {
+                    val close = input.indexOf("*", i + 1)
+                    if (close != -1) {
                         pushStyle(SpanStyle(fontStyle = FontStyle.Italic))
-                        append(italicText)
+                        append(input.substring(i + 1, close))
                         pop()
-                        i = end + 1
+                        i = close + 1
                     } else {
-                        append(text[i])
+                        append(input[i])
                         i++
                     }
                 }
                 else -> {
-                    append(text[i])
+                    append(input[i])
                     i++
                 }
             }

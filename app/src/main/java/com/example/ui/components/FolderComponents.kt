@@ -66,12 +66,12 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.FolderEntity
 
 val FolderColors = listOf(
-    Color(0xFF3B82F6), // Blue
-    Color(0xFF10B981), // Emerald
-    Color(0xFF8B5CF6), // Purple
-    Color(0xFFF59E0B), // Amber
-    Color(0xFFEF4444), // Rose
-    Color(0xFF06B6D4)  // Cyan
+    Color(0xFF52525B), // Neutral Zinc
+    Color(0xFF475569), // Muted Slate
+    Color(0xFF57534E), // Warm Stone
+    Color(0xFF4B6358), // Muted Sage
+    Color(0xFF6B5B7B), // Muted Dusk
+    Color(0xFF64748B)  // Cool Graphite
 )
 
 @Composable

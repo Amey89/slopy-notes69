@@ -13,27 +13,27 @@
   
   <style>
     :root {
-      --bg-main: #0f172a;
-      --bg-surface: #1e293b;
-      --bg-surface-elevated: #334155;
-      --bg-card: #1e293b;
-      --border-color: #334155;
-      --text-main: #f8fafc;
-      --text-secondary: #94a3b8;
-      --text-muted: #64748b;
-      --primary: #3b82f6;
-      --primary-hover: #2563eb;
-      --primary-light: rgba(59, 130, 246, 0.15);
-      --success: #10b981;
-      --warning: #f59e0b;
-      --danger: #ef4444;
-      --star-color: #eab308;
+      --bg-main: #121214;
+      --bg-surface: #1c1c1f;
+      --bg-surface-elevated: #27272a;
+      --bg-card: #1c1c1f;
+      --border-color: #2e2e33;
+      --text-main: #f4f4f5;
+      --text-secondary: #a1a1aa;
+      --text-muted: #71717a;
+      --primary: #71717a;
+      --primary-hover: #52525b;
+      --primary-light: rgba(161, 161, 170, 0.14);
+      --success: #71717a;
+      --warning: #a1a1aa;
+      --danger: #a1a1aa;
+      --star-color: #d4d4d8;
       --radius-sm: 8px;
       --radius-md: 12px;
       --radius-lg: 16px;
-      --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
-      --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.4);
-      --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.5);
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.25);
+      --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.3);
+      --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.4);
     }
 
     * {
@@ -2164,6 +2164,57 @@ function renderItems() {
   }
 }
 
+function renderInteractiveNoteMarkdown(note) {
+  const raw = note.content || '';
+  if (!raw.trim()) return '';
+  const lines = raw.split('\n');
+  const safeTitle = escapeHtml(note.title || '').replace(/'/g, "\\'");
+  const createdAt = note.createdAt || 0;
+  return lines.map((line, idx) => {
+    const trimmed = line.trim();
+    const checkMatch = trimmed.match(/^(?:[-*•]\s*)?\[([ xX]?)\]\s*(.*)$/);
+    if (checkMatch) {
+      const isChecked = checkMatch[1].toLowerCase() === 'x';
+      const itemText = escapeHtml(checkMatch[2] || '');
+      return `
+        <label style="display:flex; align-items:center; gap:8px; padding:3px 0; cursor:pointer; user-select:none;">
+          <input type="checkbox" ${isChecked ? 'checked' : ''}
+            onchange="toggleNoteChecklistLine('${safeTitle}', ${createdAt}, ${idx}, this.checked)"
+            style="width:16px; height:16px; accent-color:var(--primary); cursor:pointer;" />
+          <span style="${isChecked ? 'text-decoration:line-through; color:var(--text-muted);' : 'color:var(--text-main);'}">${itemText}</span>
+        </label>
+      `;
+    }
+    if (trimmed.startsWith('# ')) {
+      return `<div style="font-weight:700; font-size:1rem; color:var(--text-main); margin-top:4px;">${escapeHtml(trimmed.slice(2))}</div>`;
+    }
+    if (trimmed.startsWith('## ')) {
+      return `<div style="font-weight:700; font-size:0.92rem; color:var(--text-main); margin-top:3px;">${escapeHtml(trimmed.slice(3))}</div>`;
+    }
+    if (trimmed.startsWith('- ') || trimmed.startsWith('• ') || trimmed.startsWith('* ')) {
+      return `<div style="display:flex; gap:6px; padding:1px 0;"><span>•</span><span>${linkify(escapeHtml(trimmed.slice(2)))}</span></div>`;
+    }
+    return `<div>${linkify(escapeHtml(line))}</div>`;
+  }).join('');
+}
+
+function toggleNoteChecklistLine(title, createdAt, lineIdx, isChecked) {
+  const note = state.notes.find(n => n.title === title && n.createdAt === createdAt) || state.notes.find(n => n.createdAt === createdAt);
+  if (!note || !note.content) return;
+  const lines = note.content.split('\n');
+  if (lineIdx < 0 || lineIdx >= lines.length) return;
+  const trimmed = lines[lineIdx].trim();
+  const checkMatch = trimmed.match(/^(?:[-*•]\s*)?\[([ xX]?)\]\s*(.*)$/);
+  if (checkMatch) {
+    const itemText = checkMatch[2] || '';
+    lines[lineIdx] = isChecked ? `- [x] ${itemText}` : `- [ ] ${itemText}`;
+    note.content = lines.join('\n');
+    note.updatedAt = Date.now();
+    saveLocalVault();
+    renderAll();
+  }
+}
+
 function createNoteCard(note) {
   const card = document.createElement('div');
   card.className = `card color-${note.colorIndex || 0}`;
@@ -2180,15 +2231,17 @@ function createNoteCard(note) {
     if (imgMatch) displayImg = imgMatch[1];
   }
 
+  const cleanTitle = (note.title || 'Untitled Note').replace(/^(\s*(?:[-*•]\s*\[[ xX]?\]\s*|\[[ xX]?\]\s*|#{1,6}\s+))+/, '').trim() || (note.title || 'Untitled Note');
+
   card.innerHTML = `
     <div class="card-header">
       <div style="display:flex; align-items:center; gap:6px; flex:1;">
         ${isSharedLink ? `<span class="link-badge">🔗 ${permaSub ? escapeHtml(permaSub.name) : 'Shared Link'}</span>` : ''}
-        <div class="card-title">${escapeHtml(note.title || 'Untitled Note')}</div>
+        <div class="card-title">${escapeHtml(cleanTitle)}</div>
       </div>
       <div class="card-actions-row">
         <button class="btn-icon" onclick="toggleStarNote('${escapeHtml(note.title)}', ${note.createdAt})" title="Star note">
-          ${note.isStarred ? '⭐' : '☆'}
+          ${note.isStarred ? '★' : '☆'}
         </button>
         <button class="btn-icon" onclick="openEditNoteModal('${escapeHtml(note.title)}', ${note.createdAt})" title="Edit">
           ✏️
@@ -2204,7 +2257,7 @@ function createNoteCard(note) {
         onerror="this.style.display='none'" loading="lazy" />
     ` : ''}
 
-    <div class="card-content-preview">${linkify(escapeHtml(note.content || ''))}</div>
+    <div class="card-content-preview">${renderInteractiveNoteMarkdown(note)}</div>
 
     <div class="card-meta">
       <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">

@@ -98,6 +98,7 @@ import com.example.ui.components.MultiFolderSelector
 import com.example.ui.components.RichTextFormattingToolbar
 import com.example.ui.components.RichTextViewer
 import com.example.ui.components.TagManager
+import com.example.ui.components.stripLeadingMarkdownPrefix
 import com.example.ui.theme.NoteAccentColorsDark
 import com.example.ui.theme.NoteAccentColorsLight
 import com.example.ui.viewmodel.NotesTasksViewModel
@@ -190,7 +191,8 @@ fun NoteEditScreen(
             val finalTitle = if (trimmedTitle.isNotBlank()) {
                 trimmedTitle
             } else if (trimmedContent.isNotBlank()) {
-                trimmedContent.lineSequence().firstOrNull { it.isNotBlank() }?.take(40)?.trim() ?: "Untitled Note"
+                val firstLine = trimmedContent.lineSequence().firstOrNull { it.isNotBlank() } ?: "Untitled Note"
+                stripLeadingMarkdownPrefix(firstLine).take(40).trim().ifBlank { "Untitled Note" }
             } else {
                 "Untitled Note"
             }
@@ -281,7 +283,7 @@ fun NoteEditScreen(
                         Icon(
                             imageVector = if (isStarred) Icons.Default.Star else Icons.Default.StarBorder,
                             contentDescription = if (isStarred) "Unstar note" else "Star note",
-                            tint = if (isStarred) Color(0xFFF59E0B) else MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = if (isStarred) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(26.dp)
                         )
                     }

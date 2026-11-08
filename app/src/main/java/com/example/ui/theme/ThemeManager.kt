@@ -37,59 +37,67 @@ object ThemeManager {
     val Presets = listOf(
         ThemePresetInfo(
             id = 0,
-            name = "M3 Expressive Iris",
-            description = "Vibrant indigo, mint & coral expressive tonal palette",
-            primaryColor = Color(0xFF4F46E5),
-            previewBgLight = Color(0xFFF8F9FE),
-            previewBgDark = Color(0xFF0B0E17)
+            name = "Neutral Grey",
+            description = "Calm, distraction-free neutral grey interface with no neon accents",
+            primaryColor = Color(0xFF52525B),
+            previewBgLight = Color(0xFFF4F4F5),
+            previewBgDark = Color(0xFF121214)
+        ),
+        ThemePresetInfo(
+            id = 7,
+            name = "Slate Stone",
+            description = "Muted graphite & warm stone minimal workspace",
+            primaryColor = Color(0xFF57534E),
+            previewBgLight = Color(0xFFF5F5F4),
+            previewBgDark = Color(0xFF141413)
         ),
         ThemePresetInfo(
             id = 6,
             name = "Material You Dynamic",
             description = "Adapts to your Android 12+ wallpaper colors",
-            primaryColor = Color(0xFF6366F1),
-            previewBgLight = Color(0xFFF5F3FF),
-            previewBgDark = Color(0xFF13111C)
+            primaryColor = Color(0xFF64748B),
+            previewBgLight = Color(0xFFF8FAFC),
+            previewBgDark = Color(0xFF131519)
         ),
         ThemePresetInfo(
             id = 1,
             name = "Warm Parchment",
-            description = "Cozy cream paper with warm amber accents",
-            primaryColor = Color(0xFFB45309),
+            description = "Cozy cream paper with muted warm sepia accents",
+            primaryColor = Color(0xFF92400E),
             previewBgLight = Color(0xFFFDFBF7),
             previewBgDark = Color(0xFF1C1917)
         ),
         ThemePresetInfo(
             id = 2,
             name = "Midnight AMOLED",
-            description = "Pure pitch black OLED with crisp sky accents",
-            primaryColor = Color(0xFF38BDF8),
+            description = "Pure pitch black OLED with soft neutral silver accents",
+            primaryColor = Color(0xFFA1A1AA),
             previewBgLight = Color(0xFFF8FAFC),
             previewBgDark = Color(0xFF000000)
         ),
         ThemePresetInfo(
             id = 3,
-            name = "Emerald Forest",
-            description = "Calming botanical sage and vibrant emerald",
-            primaryColor = Color(0xFF059669),
-            previewBgLight = Color(0xFFF6FBF7),
-            previewBgDark = Color(0xFF0D1F17)
+            name = "Botanical Sage",
+            description = "Calming muted sage and soft forest tones",
+            primaryColor = Color(0xFF3F6251),
+            previewBgLight = Color(0xFFF6F8F6),
+            previewBgDark = Color(0xFF111814)
         ),
         ThemePresetInfo(
             id = 4,
-            name = "Twilight Lavender",
-            description = "Deep nocturnal violet and subtle purple",
-            primaryColor = Color(0xFF7C3AED),
-            previewBgLight = Color(0xFFFAF7FD),
-            previewBgDark = Color(0xFF171324)
+            name = "Muted Dusk",
+            description = "Subtle dusty plum and quiet evening slate",
+            primaryColor = Color(0xFF6B5B7B),
+            previewBgLight = Color(0xFFF8F7FA),
+            previewBgDark = Color(0xFF16141A)
         ),
         ThemePresetInfo(
             id = 5,
-            name = "Ocean Navy",
-            description = "Classic deep oceanic navy and crisp azure",
-            primaryColor = Color(0xFF0284C7),
-            previewBgLight = Color(0xFFF0F9FF),
-            previewBgDark = Color(0xFF0B1728)
+            name = "Nordic Slate",
+            description = "Cool muted steel blue and overcast grey",
+            primaryColor = Color(0xFF475569),
+            previewBgLight = Color(0xFFF1F5F9),
+            previewBgDark = Color(0xFF0F172A)
         )
     )
 
@@ -102,6 +110,43 @@ object ThemeManager {
 
     fun getColorScheme(presetId: Int, isDark: Boolean): ColorScheme {
         return when (presetId) {
+            7 -> { // Slate Stone
+                if (isDark) {
+                    darkColorScheme(
+                        primary = Color(0xFFD6D3D1),
+                        onPrimary = Color(0xFF1C1917),
+                        primaryContainer = Color(0xFF292524),
+                        onPrimaryContainer = Color(0xFFF5F5F4),
+                        secondary = Color(0xFFA8A29E),
+                        onSecondary = Color(0xFF1C1917),
+                        secondaryContainer = Color(0xFF292524),
+                        onSecondaryContainer = Color(0xFFE7E5E4),
+                        background = Color(0xFF141413),
+                        surface = Color(0xFF1C1917),
+                        onSurface = Color(0xFFF5F5F4),
+                        surfaceVariant = Color(0xFF292524),
+                        onSurfaceVariant = Color(0xFFA8A29E),
+                        outline = Color(0xFF44403C)
+                    )
+                } else {
+                    lightColorScheme(
+                        primary = Color(0xFF44403C),
+                        onPrimary = Color(0xFFFAFAF9),
+                        primaryContainer = Color(0xFFE7E5E4),
+                        onPrimaryContainer = Color(0xFF1C1917),
+                        secondary = Color(0xFF57534E),
+                        onSecondary = Color(0xFFFAFAF9),
+                        secondaryContainer = Color(0xFFE7E5E4),
+                        onSecondaryContainer = Color(0xFF292524),
+                        background = Color(0xFFF5F5F4),
+                        surface = Color(0xFFFAFAF9),
+                        onSurface = Color(0xFF1C1917),
+                        surfaceVariant = Color(0xFFE7E5E4),
+                        onSurfaceVariant = Color(0xFF57534E),
+                        outline = Color(0xFFD6D3D1)
+                    )
+                }
+            }
             1 -> { // Warm Parchment
                 if (isDark) {
                     darkColorScheme(
