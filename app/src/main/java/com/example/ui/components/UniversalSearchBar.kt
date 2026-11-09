@@ -76,6 +76,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LocalOffer
 import com.example.data.model.FolderEntity
 import com.example.data.model.NoteEntity
@@ -86,6 +87,7 @@ import com.example.ui.components.FolderColors
 enum class SearchFilter(val label: String) {
     ALL("All"),
     NOTES("Notes"),
+    LINKS("Links"),
     TASKS("Tasks"),
     FOLDERS("Folders"),
     STARRED("Starred"),
@@ -139,9 +141,22 @@ fun UniversalSearchBar(
     val matchedNotes = remember(allNotes, trimmedQuery) {
         if (trimmedQuery.isBlank()) emptyList()
         else allNotes.filter { note ->
-            note.title.contains(trimmedQuery, ignoreCase = true) ||
-            note.content.contains(trimmedQuery, ignoreCase = true) ||
-            note.tags.contains(trimmedQuery, ignoreCase = true)
+            !FolderEntity.isSharedLinksFamilyId(note.folderId) && (
+                note.title.contains(trimmedQuery, ignoreCase = true) ||
+                note.content.contains(trimmedQuery, ignoreCase = true) ||
+                note.tags.contains(trimmedQuery, ignoreCase = true)
+            )
+        }
+    }
+
+    val matchedLinks = remember(allNotes, trimmedQuery) {
+        if (trimmedQuery.isBlank()) emptyList()
+        else allNotes.filter { note ->
+            FolderEntity.isSharedLinksFamilyId(note.folderId) && (
+                note.title.contains(trimmedQuery, ignoreCase = true) ||
+                note.content.contains(trimmedQuery, ignoreCase = true) ||
+                note.tags.contains(trimmedQuery, ignoreCase = true)
+            )
         }
     }
 
@@ -150,7 +165,7 @@ fun UniversalSearchBar(
         else allTags.filter { it.name.contains(trimmedQuery.removePrefix("#"), ignoreCase = true) }
     }
 
-    val totalMatches = matchedFolders.size + matchedTasks.size + matchedNotes.size + matchedTags.size
+    val totalMatches = matchedFolders.size + matchedTasks.size + matchedNotes.size + matchedLinks.size + matchedTags.size
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -532,7 +547,7 @@ fun UniversalSearchBar(
                             }
                         }
 
-                        // 3. Matched Notes
+                        // 3. Matched Notes (Regular notes only)
                         if (matchedNotes.isNotEmpty()) {
                             Text(
                                 text = "NOTES (${matchedNotes.size})",
@@ -584,6 +599,76 @@ fun UniversalSearchBar(
                                             if (note.content.isNotBlank()) {
                                                 Text(
                                                     text = note.content.take(70).replace(Regex("[#*`_~>\\[\\]]"), "").trim(),
+                                                    fontSize = 11.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.outline,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // 4. Matched Shared Links (Separated from Notes)
+                        if (matchedLinks.isNotEmpty()) {
+                            Text(
+                                text = "SHARED LINKS (${matchedLinks.size})",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                letterSpacing = 0.5.sp
+                            )
+
+                            matchedLinks.forEach { linkNote ->
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            isPopupOpen = false
+                                            onOpenNote(linkNote)
+                                        },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                                    )
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(34.dp)
+                                                .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Link,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = linkNote.title.ifBlank { "Shared Link" },
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            if (linkNote.content.isNotBlank()) {
+                                                Text(
+                                                    text = linkNote.content.lineSequence().firstOrNull()?.take(70) ?: "",
                                                     fontSize = 11.sp,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                     maxLines = 1,

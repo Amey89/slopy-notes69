@@ -29,7 +29,8 @@ class NotesTasksApp : Application() {
             database.noteDao(),
             database.taskDao(),
             database.folderDao(),
-            database.tagDao()
+            database.tagDao(),
+            database
         )
     }
 

@@ -41,11 +41,13 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ViewAgenda
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -116,10 +118,13 @@ fun HomeScreen(
     val activeFilter by viewModel.activeFilter.collectAsState()
 
     val notesList by viewModel.notesList.collectAsState()
+    val sharedLinksList by viewModel.sharedLinksList.collectAsState()
     val tasksList by viewModel.tasksList.collectAsState()
     val noteUiItems by viewModel.noteUiItems.collectAsState()
+    val sharedLinkUiItems by viewModel.sharedLinkUiItems.collectAsState()
     val taskUiItems by viewModel.taskUiItems.collectAsState()
     val isVaultLoaded by viewModel.isVaultLoaded.collectAsState()
+    val isGridView by viewModel.isGridView.collectAsState()
 
     // Stable lambdas to prevent LazyColumn item recomposition churn
     val onOpenNoteStable: (NoteEntity) -> Unit = remember(onOpenNote) { { note -> onOpenNote(note) } }
@@ -290,17 +295,20 @@ fun HomeScreen(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier.padding(end = 10.dp)
                         ) {
+                            // Grid / List View Switch Button (replaces redundant Add Link button in top bar)
                             Surface(
-                                onClick = { showAddLinkDialog = true },
+                                onClick = { viewModel.toggleGridView() },
                                 shape = RoundedCornerShape(14.dp),
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
                                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
-                                modifier = Modifier.size(42.dp)
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .testTag("topbar_grid_list_toggle_button")
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
-                                        imageVector = Icons.Default.Link,
-                                        contentDescription = "Save Link with Metadata",
+                                        imageVector = if (isGridView) Icons.Default.ViewAgenda else Icons.Default.GridView,
+                                        contentDescription = if (isGridView) "Switch to List View" else "Switch to Grid View",
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(20.dp)
                                     )
@@ -624,29 +632,59 @@ fun HomeScreen(
                             }
                         }
 
-                        items(
-                            items = taskUiItems, 
-                            key = { "task_${it.taskWithSubtasks.task.id}" },
-                            contentType = { "task" }
-                        ) { taskUiItem ->
-                            TaskCard(
-                                uiItem = taskUiItem,
-                                onClick = onOpenTaskStable,
-                                onToggleCompleted = onToggleTaskCompletedStable,
-                                onToggleStar = onToggleTaskStarStable,
-                                onToggleSubtask = onToggleSubtaskStable,
-                                onDelete = onDeleteTaskStable,
-                                performanceMode = performanceMode
-                            )
+                        if (isGridView) {
+                            val taskRows = taskUiItems.chunked(2)
+                            items(
+                                items = taskRows,
+                                key = { row -> "task_row_${row.first().taskWithSubtasks.task.id}" },
+                                contentType = { "task_row" }
+                            ) { rowItems ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    for (taskUiItem in rowItems) {
+                                        Box(modifier = Modifier.weight(1f)) {
+                                            TaskCard(
+                                                uiItem = taskUiItem,
+                                                onClick = onOpenTaskStable,
+                                                onToggleCompleted = onToggleTaskCompletedStable,
+                                                onToggleStar = onToggleTaskStarStable,
+                                                onToggleSubtask = onToggleSubtaskStable,
+                                                onDelete = onDeleteTaskStable,
+                                                performanceMode = performanceMode
+                                            )
+                                        }
+                                    }
+                                    if (rowItems.size == 1) {
+                                        Spacer(modifier = Modifier.weight(1f))
+                                    }
+                                }
+                            }
+                        } else {
+                            items(
+                                items = taskUiItems,
+                                key = { "task_${it.taskWithSubtasks.task.id}" },
+                                contentType = { "task" }
+                            ) { taskUiItem ->
+                                TaskCard(
+                                    uiItem = taskUiItem,
+                                    onClick = onOpenTaskStable,
+                                    onToggleCompleted = onToggleTaskCompletedStable,
+                                    onToggleStar = onToggleTaskStarStable,
+                                    onToggleSubtask = onToggleSubtaskStable,
+                                    onDelete = onDeleteTaskStable,
+                                    performanceMode = performanceMode
+                                )
+                            }
                         }
                     }
 
-                    // 3. Notes Section (Material 3 Expressive Header Pill)
+                    // 3. Regular Notes Section (Strictly Regular Notes — Shared Links are in Section 4)
                     val showNotes = (activeFilter in listOf(SearchFilter.ALL, SearchFilter.NOTES, SearchFilter.STARRED, SearchFilter.FOLDERS))
 
                     if (showNotes && noteUiItems.isNotEmpty()) {
                         item(key = "notes_header", contentType = "header") {
-                            val isLinksFolder = FolderEntity.isSharedLinksFamilyId(selectedFolder?.id)
                             val accentColor = MaterialTheme.colorScheme.onSurfaceVariant
                             Spacer(modifier = Modifier.height(4.dp))
                             Row(
@@ -663,20 +701,14 @@ fun HomeScreen(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Icon(
-                                            imageVector = if (isLinksFolder) Icons.Default.Link else Icons.Default.Description,
+                                            imageVector = Icons.Default.Description,
                                             contentDescription = null,
                                             tint = accentColor,
                                             modifier = Modifier.size(15.dp)
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
-                                            text = if (selectedFolder != null && FolderEntity.isSharedLinksSubfolderId(selectedFolder?.id)) {
-                                                "SHARED LINKS • ${selectedFolder?.name?.uppercase()}"
-                                            } else if (isLinksFolder) {
-                                                "SHARED LINKS"
-                                            } else {
-                                                "NOTES"
-                                            },
+                                            text = "NOTES",
                                             style = MaterialTheme.typography.labelMedium.copy(
                                                 fontWeight = FontWeight.ExtraBold,
                                                 letterSpacing = 0.6.sp
@@ -700,24 +732,156 @@ fun HomeScreen(
                             }
                         }
 
-                        items(
-                            items = noteUiItems, 
-                            key = { "note_${it.note.id}" },
-                            contentType = { "note" }
-                        ) { noteUiItem ->
-                            NoteCard(
-                                uiItem = noteUiItem,
-                                onClick = onOpenNoteStable,
-                                onToggleStar = onToggleNoteStarStable,
-                                onDelete = onDeleteNoteStable,
-                                performanceMode = performanceMode,
-                                onChecklistToggle = onUpdateNoteContentStable
-                            )
+                        if (isGridView) {
+                            val noteRows = noteUiItems.chunked(2)
+                            items(
+                                items = noteRows,
+                                key = { row -> "note_row_${row.first().note.id}" },
+                                contentType = { "note_row" }
+                            ) { rowItems ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    for (noteUiItem in rowItems) {
+                                        Box(modifier = Modifier.weight(1f)) {
+                                            NoteCard(
+                                                uiItem = noteUiItem,
+                                                onClick = onOpenNoteStable,
+                                                onToggleStar = onToggleNoteStarStable,
+                                                onDelete = onDeleteNoteStable,
+                                                performanceMode = performanceMode,
+                                                onChecklistToggle = onUpdateNoteContentStable
+                                            )
+                                        }
+                                    }
+                                    if (rowItems.size == 1) {
+                                        Spacer(modifier = Modifier.weight(1f))
+                                    }
+                                }
+                            }
+                        } else {
+                            items(
+                                items = noteUiItems,
+                                key = { "note_${it.note.id}" },
+                                contentType = { "note" }
+                            ) { noteUiItem ->
+                                NoteCard(
+                                    uiItem = noteUiItem,
+                                    onClick = onOpenNoteStable,
+                                    onToggleStar = onToggleNoteStarStable,
+                                    onDelete = onDeleteNoteStable,
+                                    performanceMode = performanceMode,
+                                    onChecklistToggle = onUpdateNoteContentStable
+                                )
+                            }
+                        }
+                    }
+
+                    // 4. Shared Links Section (Dedicated separate section in All Vault Items, Links filter, Starred, and Shared Links folders)
+                    val showSharedLinks = (activeFilter in listOf(SearchFilter.ALL, SearchFilter.LINKS, SearchFilter.STARRED, SearchFilter.FOLDERS))
+
+                    if (showSharedLinks && sharedLinkUiItems.isNotEmpty()) {
+                        item(key = "shared_links_header", contentType = "header") {
+                            val accentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(100.dp),
+                                    color = accentColor.copy(alpha = 0.14f)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Link,
+                                            contentDescription = null,
+                                            tint = accentColor,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = if (selectedFolder != null && FolderEntity.isSharedLinksSubfolderId(selectedFolder?.id)) {
+                                                "SHARED LINKS • ${selectedFolder?.name?.uppercase()}"
+                                            } else {
+                                                "SHARED LINKS"
+                                            },
+                                            style = MaterialTheme.typography.labelMedium.copy(
+                                                fontWeight = FontWeight.ExtraBold,
+                                                letterSpacing = 0.6.sp
+                                            ),
+                                            color = accentColor
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .background(accentColor.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                                                .padding(horizontal = 6.dp, vertical = 1.dp)
+                                        ) {
+                                            Text(
+                                                text = "${sharedLinksList.size}",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
+                                                color = accentColor
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (isGridView) {
+                            val linkRows = sharedLinkUiItems.chunked(2)
+                            items(
+                                items = linkRows,
+                                key = { row -> "link_row_${row.first().note.id}" },
+                                contentType = { "link_row" }
+                            ) { rowItems ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    for (linkUiItem in rowItems) {
+                                        Box(modifier = Modifier.weight(1f)) {
+                                            NoteCard(
+                                                uiItem = linkUiItem,
+                                                onClick = onOpenNoteStable,
+                                                onToggleStar = onToggleNoteStarStable,
+                                                onDelete = onDeleteNoteStable,
+                                                performanceMode = performanceMode,
+                                                onChecklistToggle = onUpdateNoteContentStable
+                                            )
+                                        }
+                                    }
+                                    if (rowItems.size == 1) {
+                                        Spacer(modifier = Modifier.weight(1f))
+                                    }
+                                }
+                            }
+                        } else {
+                            items(
+                                items = sharedLinkUiItems,
+                                key = { "link_${it.note.id}" },
+                                contentType = { "link" }
+                            ) { linkUiItem ->
+                                NoteCard(
+                                    uiItem = linkUiItem,
+                                    onClick = onOpenNoteStable,
+                                    onToggleStar = onToggleNoteStarStable,
+                                    onDelete = onDeleteNoteStable,
+                                    performanceMode = performanceMode,
+                                    onChecklistToggle = onUpdateNoteContentStable
+                                )
+                            }
                         }
                     }
 
                     // Empty State (Material 3 Expressive Card)
-                    val isEmpty = isVaultLoaded && noteUiItems.isEmpty() && taskUiItems.isEmpty()
+                    val isEmpty = isVaultLoaded && noteUiItems.isEmpty() && sharedLinkUiItems.isEmpty() && taskUiItems.isEmpty()
                     if (isEmpty) {
                         item(key = "empty_state", contentType = "empty_state") {
                             val currentSubfolders = subfoldersMap[selectedFolder?.id] ?: emptyList()
@@ -899,6 +1063,7 @@ fun HomeScreen(
     // Dialog: Save Link with Metadata
     if (showAddLinkDialog) {
         AddLinkModalDialog(
+            allTags = allTags,
             onDismiss = { showAddLinkDialog = false },
             onSaveLink = { url, title, description, imageUrl, tags, subfolderId ->
                 viewModel.saveManualLinkWithMetadata(

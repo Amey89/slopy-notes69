@@ -27,10 +27,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FolderSpecial
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LocalOffer
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -101,7 +103,7 @@ fun QuickShareLinkSheet(
 
     var resolvedMetadata by remember(sharedText) { mutableStateOf<LinkMetadata?>(null) }
     var isFetchingMetadata by remember(sharedText) { mutableStateOf(true) }
-    var editableTitle by remember(sharedText) { mutableStateOf(instantPreview.title) }
+    var editableTitle by remember(sharedText) { mutableStateOf(LinkMetadataExtractor.decodeHtmlEntities(instantPreview.title)) }
     var userEditedTitle by remember(sharedText) { mutableStateOf(false) }
     var selectedSubfolderId by remember(sharedText) { mutableLongStateOf(instantPreview.subfolderId) }
 
@@ -112,6 +114,7 @@ fun QuickShareLinkSheet(
             addAll(instantPreview.suggestedTags)
         }
     }
+    var tagSearchQuery by remember { mutableStateOf("") }
     var customTagInput by remember { mutableStateOf("") }
 
     // Fetch full rich metadata immediately on open
@@ -121,7 +124,7 @@ fun QuickShareLinkSheet(
             val fullMeta = LinkMetadataExtractor.resolve(sharedText, subject, sourcePackage)
             resolvedMetadata = fullMeta
             if (!userEditedTitle && fullMeta.title.isNotBlank()) {
-                editableTitle = fullMeta.title
+                editableTitle = LinkMetadataExtractor.decodeHtmlEntities(fullMeta.title)
             }
             if (selectedSubfolderId == instantPreview.subfolderId) {
                 selectedSubfolderId = fullMeta.subfolderId
@@ -160,6 +163,22 @@ fun QuickShareLinkSheet(
         baseNames
     }
 
+    val normalizedTagSearch = remember(tagSearchQuery) {
+        tagSearchQuery.trim().removePrefix("#").lowercase()
+    }
+
+    val filteredQuickTags = remember(availableQuickTags, normalizedTagSearch, selectedTags.toList()) {
+        if (normalizedTagSearch.isBlank()) {
+            availableQuickTags
+        } else {
+            availableQuickTags.filter { it.contains(normalizedTagSearch, ignoreCase = true) }
+        }
+    }
+
+    val decodedDescription = remember(activeMeta.description) {
+        LinkMetadataExtractor.decodeHtmlEntities(activeMeta.description)
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -186,13 +205,13 @@ fun QuickShareLinkSheet(
                     Box(
                         modifier = Modifier
                             .size(40.dp)
-                            .background(Color(0xFF2563EB).copy(alpha = 0.14f), RoundedCornerShape(12.dp)),
+                            .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(12.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Link,
                             contentDescription = null,
-                            tint = Color(0xFF2563EB),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -206,7 +225,7 @@ fun QuickShareLinkSheet(
                         Text(
                             text = "Shared Links ▸ ${targetFolder.name}",
                             style = MaterialTheme.typography.labelMedium.copy(
-                                color = Color(0xFF2563EB),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontWeight = FontWeight.SemiBold
                             )
                         )
@@ -218,7 +237,7 @@ fun QuickShareLinkSheet(
                         CircularProgressIndicator(
                             modifier = Modifier.size(18.dp),
                             strokeWidth = 2.dp,
-                            color = Color(0xFF2563EB)
+                            color = MaterialTheme.colorScheme.primary
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                     }
@@ -271,9 +290,9 @@ fun QuickShareLinkSheet(
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    if (activeMeta.description.isNotBlank()) {
+                    if (decodedDescription.isNotBlank()) {
                         Text(
-                            text = activeMeta.description,
+                            text = decodedDescription,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 2,
@@ -284,7 +303,7 @@ fun QuickShareLinkSheet(
                     Text(
                         text = activeMeta.url,
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFF2563EB),
+                        color = MaterialTheme.colorScheme.primary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -348,12 +367,12 @@ fun QuickShareLinkSheet(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
-            // 4. Tag Selection with 1-Tap Auto-Save & Continue Browsing
+            // 4. Tag Selection with Search Bar & 1-Tap Auto-Save
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
             ) {
                 Column(
                     modifier = Modifier.padding(14.dp),
@@ -398,19 +417,132 @@ fun QuickShareLinkSheet(
                             checked = autoSaveOnTagSelect,
                             onCheckedChange = { autoSaveOnTagSelect = it },
                             colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
+                                checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
                                 checkedTrackColor = MaterialTheme.colorScheme.primary
                             )
                         )
                     }
 
-                    // Selectable Tag Chips
+                    // Tag Search Bar (Request 1: quickly filter/find tags in Quick Save Shared Link window)
+                    OutlinedTextField(
+                        value = tagSearchQuery,
+                        onValueChange = { tagSearchQuery = it },
+                        placeholder = {
+                            Text(
+                                text = "Search tags (#work, #meme, #study)...",
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "Search tags",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        },
+                        trailingIcon = {
+                            if (tagSearchQuery.isNotEmpty()) {
+                                IconButton(
+                                    onClick = { tagSearchQuery = "" },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Clear,
+                                        contentDescription = "Clear tag search",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(
+                            onDone = {
+                                if (normalizedTagSearch.isNotBlank()) {
+                                    val matchOrNew = filteredQuickTags.firstOrNull() ?: normalizedTagSearch
+                                    if (!selectedTags.contains(matchOrNew)) {
+                                        selectedTags.add(matchOrNew)
+                                    }
+                                    tagSearchQuery = ""
+                                    if (autoSaveOnTagSelect) {
+                                        onSaveAndContinueBrowsing(
+                                            resolvedMetadata,
+                                            editableTitle,
+                                            selectedTags.toList(),
+                                            selectedSubfolderId
+                                        )
+                                    }
+                                }
+                            }
+                        ),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("quick_share_tag_search_input")
+                    )
+
+                    // Selectable Tag Chips (Filtered by tagSearchQuery)
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        availableQuickTags.forEach { tagName ->
+                        // If user typed a tag in the search bar that doesn't exist yet, offer 1-tap Create & Save chip
+                        if (normalizedTagSearch.isNotBlank() &&
+                            availableQuickTags.none { it.equals(normalizedTagSearch, ignoreCase = true) }
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(20.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .clickable {
+                                        if (!selectedTags.contains(normalizedTagSearch)) {
+                                            selectedTags.add(normalizedTagSearch)
+                                        }
+                                        tagSearchQuery = ""
+                                        if (autoSaveOnTagSelect) {
+                                            onSaveAndContinueBrowsing(
+                                                resolvedMetadata,
+                                                editableTitle,
+                                                selectedTags.toList(),
+                                                selectedSubfolderId
+                                            )
+                                        }
+                                    }
+                                    .testTag("quick_share_create_searched_tag")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Add,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        text = if (autoSaveOnTagSelect) "Create & Save #$normalizedTagSearch" else "Add #$normalizedTagSearch",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                }
+                            }
+                        }
+
+                        filteredQuickTags.forEach { tagName ->
                             val isTagSelected = selectedTags.any { it.equals(tagName, ignoreCase = true) }
                             Surface(
                                 shape = RoundedCornerShape(20.dp),
@@ -456,14 +588,14 @@ fun QuickShareLinkSheet(
                                     Icon(
                                         imageVector = if (isTagSelected) Icons.Default.Check else Icons.Default.LocalOffer,
                                         contentDescription = null,
-                                        tint = if (isTagSelected) Color.White else MaterialTheme.colorScheme.primary,
+                                        tint = if (isTagSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.size(14.dp)
                                     )
                                     Text(
                                         text = "#$tagName",
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = if (isTagSelected) Color.White else MaterialTheme.colorScheme.onSurface
+                                        color = if (isTagSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
                                     )
                                 }
                             }
@@ -562,13 +694,15 @@ fun QuickShareLinkSheet(
                         .weight(2f)
                         .testTag("quick_share_save_button"),
                     shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ),
                     contentPadding = PaddingValues(vertical = 13.dp)
                 ) {
                     Text(
                         text = "Save to ${targetFolder.name} & Continue",
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }

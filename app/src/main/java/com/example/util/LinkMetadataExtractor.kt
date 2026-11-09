@@ -797,8 +797,12 @@ object LinkMetadataExtractor {
         }
     }
 
-    private fun cleanHtmlEntities(text: String): String {
-        return text
+    private val HEX_ENTITY_REGEX = Regex("&#[xX]([0-9a-fA-F]{1,6});")
+    private val DEC_ENTITY_REGEX = Regex("&#([0-9]{1,7});")
+
+    fun decodeHtmlEntities(text: String): String {
+        if (text.isEmpty() || !text.contains('&')) return text
+        var decoded = text
             .replace("&amp;", "&")
             .replace("&lt;", "<")
             .replace("&gt;", ">")
@@ -809,8 +813,29 @@ object LinkMetadataExtractor {
             .replace("&#x2F;", "/")
             .replace("&#x3A;", ":")
             .replace("&nbsp;", " ")
-            .trim()
+
+        if (decoded.contains("&#")) {
+            decoded = HEX_ENTITY_REGEX.replace(decoded) { match ->
+                val codePoint = match.groupValues[1].toIntOrNull(16)
+                if (codePoint != null && Character.isValidCodePoint(codePoint)) {
+                    String(Character.toChars(codePoint))
+                } else {
+                    match.value
+                }
+            }
+            decoded = DEC_ENTITY_REGEX.replace(decoded) { match ->
+                val codePoint = match.groupValues[1].toIntOrNull(10)
+                if (codePoint != null && Character.isValidCodePoint(codePoint)) {
+                    String(Character.toChars(codePoint))
+                } else {
+                    match.value
+                }
+            }
+        }
+        return decoded.trim()
     }
+
+    private fun cleanHtmlEntities(text: String): String = decodeHtmlEntities(text)
 
     private fun generateFallbackTitle(
         sharedText: String,

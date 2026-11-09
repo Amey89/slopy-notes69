@@ -1446,16 +1446,19 @@
       </div>
 
       <!-- 1-Tap Tag Selection Auto-Save Box -->
-      <div style="background:rgba(37, 99, 235, 0.1); border:1px solid rgba(59, 130, 246, 0.35); border-radius:var(--radius-sm); padding:10px 12px;">
+      <div style="background:rgba(255, 255, 255, 0.04); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:10px 12px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-          <span style="font-size:0.76rem; font-weight:700; color:#60a5fa; text-transform:uppercase; letter-spacing:0.5px;">
+          <span style="font-size:0.76rem; font-weight:700; color:var(--text-primary); text-transform:uppercase; letter-spacing:0.5px;">
             ⚡ Tap a Tag to Assign & Auto-Save Immediately
           </span>
           <label style="font-size:0.74rem; color:var(--text-secondary); display:flex; align-items:center; gap:4px; cursor:pointer;">
             <input type="checkbox" id="chkOneTapTagAutoSave" checked> 1-Tap Auto-Save
           </label>
         </div>
-        <div class="quick-tags-row" id="linkQuickAutoSaveTagsRow" style="margin-top:4px;"></div>
+        <div style="margin-bottom:8px;">
+          <input type="text" class="form-input" id="linkTagSearchInput" placeholder="🔍 Search or filter tags (#work, #ideas...)" style="padding:6px 10px; font-size:0.82rem;" oninput="renderLinkQuickAutoSaveTags()">
+        </div>
+        <div class="quick-tags-row" id="linkQuickAutoSaveTagsRow" style="margin-top:4px; max-height:150px; overflow-y:auto;"></div>
       </div>
 
       <!-- Live Metadata Preview Box -->
@@ -1827,6 +1830,7 @@ function saveDriveConfig() {
 function renderNavigation() {
   // Counts
   const totalNotes = state.notes.length;
+  const regularNotesCount = state.notes.filter(n => !isSharedLinksFamilyId(n.folderId)).length;
   const totalTasks = state.tasks.length;
   const totalStarred = state.notes.filter(n => n.isStarred).length + state.tasks.filter(t => t.isStarred).length;
   
@@ -1836,7 +1840,7 @@ function renderNavigation() {
   const sharedLinksCount = state.notes.filter(n => isSharedLinksFamilyId(n.folderId)).length;
 
   document.getElementById('countAll').textContent = totalNotes + totalTasks;
-  document.getElementById('countNotes').textContent = totalNotes;
+  document.getElementById('countNotes').textContent = regularNotesCount;
   document.getElementById('countTasks').textContent = totalTasks;
   document.getElementById('countStarred').textContent = totalStarred;
   document.getElementById('countCompletedTasks').textContent = completedTasksCount;
@@ -2043,7 +2047,7 @@ function renderItems() {
       ...state.tasks.map(t => ({ type: 'task', ...t }))
     ];
   } else if (currentNav === 'notes') {
-    list = state.notes.map(n => ({ type: 'note', ...n }));
+    list = state.notes.filter(n => !isSharedLinksFamilyId(n.folderId)).map(n => ({ type: 'note', ...n }));
   } else if (currentNav === 'tasks') {
     list = state.tasks.map(t => ({ type: 'task', ...t }));
   } else if (currentNav === 'starred') {
@@ -2068,7 +2072,7 @@ function renderItems() {
 
   // Filter by Topbar filter buttons
   if (currentTypeFilter === 'notes') {
-    list = list.filter(i => i.type === 'note');
+    list = list.filter(i => i.type === 'note' && !isSharedLinksFamilyId(i.folderId));
   } else if (currentTypeFilter === 'tasks') {
     list = list.filter(i => i.type === 'task');
   } else if (currentTypeFilter === 'starred') {
@@ -2118,7 +2122,8 @@ function renderItems() {
 
   if (shouldSeparate) {
     const tasksPart = list.filter(i => i.type === 'task');
-    const notesPart = list.filter(i => i.type === 'note');
+    const notesPart = list.filter(i => i.type === 'note' && !isSharedLinksFamilyId(i.folderId));
+    const linksPart = list.filter(i => i.type === 'note' && isSharedLinksFamilyId(i.folderId));
 
     // Section 1: Tasks
     if (tasksPart.length > 0) {
@@ -2137,7 +2142,7 @@ function renderItems() {
       tasksPart.forEach(t => container.appendChild(createTaskCard(t)));
     }
 
-    // Section 2: Notes
+    // Section 2: Notes (strictly regular notes, excluding shared links)
     if (notesPart.length > 0) {
       const headerDiv = document.createElement('div');
       headerDiv.className = 'section-divider-header';
@@ -2151,6 +2156,22 @@ function renderItems() {
       container.appendChild(headerDiv);
 
       notesPart.forEach(n => container.appendChild(createNoteCard(n)));
+    }
+
+    // Section 3: Shared Links (strictly separate from regular notes)
+    if (linksPart.length > 0) {
+      const headerDiv = document.createElement('div');
+      headerDiv.className = 'section-divider-header';
+      headerDiv.innerHTML = `
+        <div class="section-divider-title" style="color:var(--text-primary);">
+          <span>🔗 SHARED LINKS</span>
+          <span style="font-size:0.75rem; opacity:0.8;">(${linksPart.length} items)</span>
+        </div>
+        <button class="btn btn-secondary" style="font-size:0.75rem; padding:4px 10px;" onclick="openAddLinkModal()">+ Add Link</button>
+      `;
+      container.appendChild(headerDiv);
+
+      linksPart.forEach(n => container.appendChild(createNoteCard(n)));
     }
   } else {
     // Normal unified view
@@ -2967,12 +2988,26 @@ function renderLinkQuickAutoSaveTags(extraTags = []) {
   if (!row) return;
   row.innerHTML = '';
 
+  const searchInput = document.getElementById('linkTagSearchInput');
+  const query = searchInput ? searchInput.value.trim().toLowerCase().replace(/^#/, '') : '';
+
   const tagSet = new Set();
   (state.customTags || []).forEach(t => tagSet.add(t.name.toLowerCase().trim()));
   extraTags.forEach(t => tagSet.add(t.toLowerCase().trim()));
+  state.notes.forEach(n => {
+    (n.tags || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean).forEach(x => tagSet.add(x));
+  });
+  state.tasks.forEach(t => {
+    (t.tags || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean).forEach(x => tagSet.add(x));
+  });
   ['links', 'video', 'social', 'inspiration', 'reading', 'watch-later', 'work', 'personal'].forEach(t => tagSet.add(t));
 
-  Array.from(tagSet).filter(Boolean).slice(0, 14).forEach(tagName => {
+  let tagsList = Array.from(tagSet).filter(Boolean);
+  if (query) {
+    tagsList = tagsList.filter(t => t.includes(query));
+  }
+
+  tagsList.forEach(tagName => {
     const chip = document.createElement('span');
     chip.className = 'quick-tag-chip';
     chip.style.fontWeight = '700';
@@ -2981,6 +3016,17 @@ function renderLinkQuickAutoSaveTags(extraTags = []) {
     chip.onclick = () => selectQuickLinkTagAndMaybeAutoSave(tagName);
     row.appendChild(chip);
   });
+
+  if (query && !tagSet.has(query)) {
+    const createChip = document.createElement('span');
+    createChip.className = 'quick-tag-chip';
+    createChip.style.fontWeight = '700';
+    createChip.style.padding = '4px 10px';
+    createChip.style.borderColor = 'var(--text-primary)';
+    createChip.textContent = `+ Create & Save #${query}`;
+    createChip.onclick = () => selectQuickLinkTagAndMaybeAutoSave(query);
+    row.appendChild(createChip);
+  }
 }
 
 function selectQuickLinkTagAndMaybeAutoSave(tagName) {
@@ -2998,6 +3044,8 @@ function openAddLinkModal(prefillUrl = '', prefillTitle = '') {
   document.getElementById('linkInputDescription').value = '';
   document.getElementById('linkInputImage').value = '';
   document.getElementById('linkInputTags').value = 'links';
+  const searchInput = document.getElementById('linkTagSearchInput');
+  if (searchInput) searchInput.value = '';
   document.getElementById('linkMetaPreview').classList.remove('active');
   document.getElementById('linkMetaImagePreview').style.display = 'none';
   document.getElementById('btnFetchMeta').textContent = '⚡ Fetch';
@@ -3781,8 +3829,18 @@ function formatDate(ts) {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function decodeHtmlNumericEntities(str) {
+  return (str || '')
+    .replace(/&#[xX]([0-9a-fA-F]{1,6});/g, (_, hex) => {
+      try { return String.fromCodePoint(parseInt(hex, 16)); } catch (e) { return _; }
+    })
+    .replace(/&#([0-9]{1,7});/g, (_, dec) => {
+      try { return String.fromCodePoint(parseInt(dec, 10)); } catch (e) { return _; }
+    });
+}
+
 function escapeHtml(str) {
-  return (str || '').replace(/[&<>'"]/g, 
+  return decodeHtmlNumericEntities(str).replace(/[&<>'"]/g, 
     tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
   );
 }

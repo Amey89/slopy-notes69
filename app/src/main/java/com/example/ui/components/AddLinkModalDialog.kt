@@ -2,9 +2,12 @@ package com.example.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,14 +21,18 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.LocalOffer
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -54,12 +61,15 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.data.model.FolderEntity
+import com.example.data.model.TagEntity
 import com.example.util.LinkMetadata
 import com.example.util.LinkMetadataExtractor
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AddLinkModalDialog(
+    allTags: List<TagEntity> = emptyList(),
     onDismiss: () -> Unit,
     onSaveLink: (url: String, title: String, description: String, imageUrl: String, tags: String, subfolderId: Long) -> Unit
 ) {
@@ -72,6 +82,7 @@ fun AddLinkModalDialog(
     var extractedDescription by remember { mutableStateOf("") }
     var extractedImageUrl by remember { mutableStateOf("") }
     var extractedTags by remember { mutableStateOf("link") }
+    var tagSearchQuery by remember { mutableStateOf("") }
     var selectedSubfolderId by remember { mutableLongStateOf(FolderEntity.CHROME_SUBFOLDER_ID) }
 
     var isFetching by remember { mutableStateOf(false) }
@@ -97,8 +108,8 @@ fun AddLinkModalDialog(
                 val metadata = LinkMetadataExtractor.resolve(urlToExtract)
                 detectedMetadata = metadata
                 selectedSubfolderId = metadata.subfolderId
-                if (extractedTitle.isBlank()) extractedTitle = metadata.title
-                if (extractedDescription.isBlank()) extractedDescription = metadata.description
+                if (extractedTitle.isBlank()) extractedTitle = LinkMetadataExtractor.decodeHtmlEntities(metadata.title)
+                if (extractedDescription.isBlank()) extractedDescription = LinkMetadataExtractor.decodeHtmlEntities(metadata.description)
                 if (extractedImageUrl.isBlank()) extractedImageUrl = metadata.imageUrl
                 extractedTags = metadata.suggestedTags.joinToString(", ")
             } catch (e: Exception) {
@@ -112,6 +123,30 @@ fun AddLinkModalDialog(
     val targetSubfolder = FolderEntity.getPermanentFolderById(selectedSubfolderId)
         ?: FolderEntity.PermanentChromeFolder
 
+    val activeTagSet = remember(extractedTags) {
+        extractedTags.split(",").map { it.trim().removePrefix("#").lowercase() }.filter { it.isNotBlank() }.toSet()
+    }
+
+    val availableTagPool = remember(allTags, targetSubfolder.name) {
+        val platformSlug = targetSubfolder.name.lowercase().replace(" (twitter)", "").replace(" ", "-")
+        buildList {
+            allTags.forEach { add(it.name.lowercase()) }
+            add("link")
+            add(platformSlug)
+            add("watch-later")
+            add("read-later")
+            add("bookmark")
+            add("favorite")
+            add("research")
+        }.distinct()
+    }
+
+    val filteredTags = remember(availableTagPool, tagSearchQuery) {
+        val q = tagSearchQuery.trim().removePrefix("#").lowercase()
+        if (q.isBlank()) availableTagPool
+        else availableTagPool.filter { it.contains(q, ignoreCase = true) }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -119,7 +154,7 @@ fun AddLinkModalDialog(
                 Icon(
                     imageVector = Icons.Default.Link,
                     contentDescription = null,
-                    tint = Color(0xFF2563EB),
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(24.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
@@ -132,7 +167,7 @@ fun AddLinkModalDialog(
                     Text(
                         text = "Shared Links ▸ ${targetSubfolder.name}",
                         fontSize = 12.sp,
-                        color = Color(0xFF2563EB),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.SemiBold
                     )
                 }
@@ -172,21 +207,24 @@ fun AddLinkModalDialog(
                         singleLine = true,
                         modifier = Modifier.weight(1f),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color(0xFF2563EB),
-                            cursorColor = Color(0xFF2563EB)
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            cursorColor = MaterialTheme.colorScheme.primary
                         )
                     )
 
                     Button(
                         onClick = { runExtraction(inputUrl) },
                         enabled = !isFetching && inputUrl.isNotBlank(),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        ),
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         if (isFetching) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(16.dp),
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.onPrimary,
                                 strokeWidth = 2.dp
                             )
                         } else {
@@ -206,7 +244,7 @@ fun AddLinkModalDialog(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text("📋 Paste from Clipboard & Fetch", fontSize = 12.sp)
+                        Text("Paste from Clipboard & Fetch", fontSize = 12.sp)
                     }
                 }
 
@@ -263,7 +301,7 @@ fun AddLinkModalDialog(
                                 text = "METADATA & IMAGE PREVIEW (${targetSubfolder.name.uppercase()})",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF2563EB),
+                                color = MaterialTheme.colorScheme.primary,
                                 letterSpacing = 0.5.sp
                             )
                             Spacer(modifier = Modifier.height(6.dp))
@@ -340,11 +378,76 @@ fun AddLinkModalDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                // Tags
+                // Tag Search Bar & Quick Tag Chips
+                OutlinedTextField(
+                    value = tagSearchQuery,
+                    onValueChange = { tagSearchQuery = it },
+                    placeholder = { Text("Search tags (#work, #meme, #study)...", fontSize = 12.sp) },
+                    leadingIcon = {
+                        Icon(Icons.Default.Search, contentDescription = "Search tags", modifier = Modifier.size(17.dp))
+                    },
+                    trailingIcon = {
+                        if (tagSearchQuery.isNotEmpty()) {
+                            IconButton(onClick = { tagSearchQuery = "" }, modifier = Modifier.size(28.dp)) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear", modifier = Modifier.size(15.dp))
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    filteredTags.take(18).forEach { tagName ->
+                        val isSelected = activeTagSet.contains(tagName.lowercase())
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            border = BorderStroke(
+                                1.dp,
+                                if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                            ),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(16.dp))
+                                .clickable {
+                                    val mutable = activeTagSet.toMutableSet()
+                                    if (isSelected) mutable.remove(tagName.lowercase())
+                                    else mutable.add(tagName.lowercase())
+                                    extractedTags = mutable.joinToString(", ")
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isSelected) Icons.Default.Check else Icons.Default.LocalOffer,
+                                    contentDescription = null,
+                                    tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Text(
+                                    text = "#$tagName",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Tags raw input
                 OutlinedTextField(
                     value = extractedTags,
                     onValueChange = { extractedTags = it },
-                    label = { Text("Tags (comma separated)") },
+                    label = { Text("Selected Tags (comma separated)") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -366,7 +469,10 @@ fun AddLinkModalDialog(
                     }
                 },
                 enabled = inputUrl.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                ),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Text("Save to ${targetSubfolder.name}", fontWeight = FontWeight.Bold)

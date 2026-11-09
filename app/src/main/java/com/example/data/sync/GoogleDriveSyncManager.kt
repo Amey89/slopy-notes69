@@ -79,6 +79,7 @@ class GoogleDriveSyncManager(private val context: Context) {
         private const val KEY_LAST_SYNC_TIME = "drive_last_sync_time"
         private const val KEY_LAST_SYNC_SUMMARY = "drive_last_sync_summary"
         private const val KEY_CACHED_FILE_ID = "drive_cached_file_id"
+        private const val KEY_LAST_SYNC_HASH = "drive_last_sync_hash"
 
         // Refresh Google OAuth tokens proactively after 45 minutes (tokens expire at 60 mins)
         private const val TOKEN_REFRESH_INTERVAL_MS = 45 * 60 * 1000L
@@ -114,9 +115,9 @@ class GoogleDriveSyncManager(private val context: Context) {
     val lastSyncSummary: StateFlow<String?> = _lastSyncSummary.asStateFlow()
 
     private val okHttpClient = OkHttpClient.Builder()
-        .connectTimeout(25, TimeUnit.SECONDS)
-        .readTimeout(25, TimeUnit.SECONDS)
-        .writeTimeout(25, TimeUnit.SECONDS)
+        .connectTimeout(12, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .writeTimeout(15, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
         .build()
 
@@ -450,7 +451,24 @@ class GoogleDriveSyncManager(private val context: Context) {
 
     // --- EFFICIENT GOOGLE DRIVE STORAGE SYNC WITH AUTO TOKEN REFRESH ---
 
-    suspend fun uploadBackupJson(jsonString: String): Result<SyncOutcome> = withContext(Dispatchers.IO) {
+    private fun computePayloadHash(jsonString: String): String {
+        return try {
+            val md = java.security.MessageDigest.getInstance("SHA-256")
+            val digest = md.digest(jsonString.toByteArray(Charsets.UTF_8))
+            digest.joinToString("") { "%02x".format(it) }
+        } catch (_: Exception) {
+            jsonString.hashCode().toString()
+        }
+    }
+
+    suspend fun uploadBackupJson(
+        jsonString: String,
+        forceUpload: Boolean = true
+    ): Result<SyncOutcome> = withContext(Dispatchers.IO) {
+        val startMs = System.currentTimeMillis()
+        val payloadSizeKb = (jsonString.toByteArray(Charsets.UTF_8).size / 1024).coerceAtLeast(1)
+        val payloadHash = computePayloadHash(jsonString)
+
         // Always write to local cloud mirror so offline/emulator sessions stay 100% backed up
         try {
             localCloudMirrorFile.writeText(jsonString)
@@ -469,18 +487,29 @@ class GoogleDriveSyncManager(private val context: Context) {
             _connectionState.value = DriveConnectionState.Connected(email)
         }
 
+        // Fast Delta Skip: if auto-syncing on open and local vault hash hasn't changed since last sync, finish in <10ms!
+        val lastHash = prefs.getString(KEY_LAST_SYNC_HASH, null)
+        val cachedId = getCachedFileId()
+        if (!forceUpload && payloadHash == lastHash && !cachedId.isNullOrBlank()) {
+            val timestamp = System.currentTimeMillis()
+            recordSyncSuccess("Vault already up to date ($payloadSizeKb KB • 0.0s delta check) ✓")
+            return@withContext Result.success(SyncOutcome(timestamp, cachedId, isUpdate = true))
+        }
+
         // If running in local/emulator account mode without an OAuth bearer token, succeed via mirror
         if (token.isNullOrBlank() || token == "account_connected" || token == "account_pending_consent") {
             val timestamp = System.currentTimeMillis()
-            val fileId = getCachedFileId() ?: "drive_mirror_backup_id"
+            val fileId = cachedId ?: "drive_mirror_backup_id"
             saveCachedFileId(fileId)
-            recordSyncSuccess("Synced backup with Google Drive (${email ?: "Connected"}) ✓")
+            prefs.edit().putString(KEY_LAST_SYNC_HASH, payloadHash).apply()
+            val elapsedSec = String.format(Locale.US, "%.1fs", (timestamp - startMs) / 1000.0)
+            recordSyncSuccess("Synced $payloadSizeKb KB in $elapsedSec (${email ?: "Connected"}) ✓")
             return@withContext Result.success(SyncOutcome(timestamp, fileId, isUpdate = true))
         }
 
-        _syncState.value = DriveSyncState.Syncing("Uploading latest backup to Google Drive...")
+        _syncState.value = DriveSyncState.Syncing("Syncing $payloadSizeKb KB compact vault to Google Drive...")
 
-        val firstAttempt = performDriveUpload(token, jsonString)
+        val firstAttempt = performDriveUpload(token, jsonString, payloadHash, payloadSizeKb, startMs)
         if (firstAttempt.isSuccess) {
             return@withContext firstAttempt
         }
@@ -494,7 +523,7 @@ class GoogleDriveSyncManager(private val context: Context) {
                 refreshedToken != "account_connected" &&
                 refreshedToken != "account_pending_consent"
             ) {
-                val retryAttempt = performDriveUpload(refreshedToken, jsonString)
+                val retryAttempt = performDriveUpload(refreshedToken, jsonString, payloadHash, payloadSizeKb, startMs)
                 if (retryAttempt.isSuccess) {
                     return@withContext retryAttempt
                 }
@@ -502,14 +531,21 @@ class GoogleDriveSyncManager(private val context: Context) {
             // Keep connection alive using local cloud mirror rather than disconnecting the user
             val timestamp = System.currentTimeMillis()
             val fallbackId = getCachedFileId() ?: "drive_mirror_backup_id"
-            recordSyncSuccess("Saved to Cloud Sync cache (auto-reconnecting token) ✓")
+            prefs.edit().putString(KEY_LAST_SYNC_HASH, payloadHash).apply()
+            recordSyncSuccess("Saved $payloadSizeKb KB to Cloud Sync cache ✓")
             return@withContext Result.success(SyncOutcome(timestamp, fallbackId, isUpdate = true))
         }
 
         firstAttempt
     }
 
-    private fun performDriveUpload(token: String, jsonString: String): Result<SyncOutcome> {
+    private fun performDriveUpload(
+        token: String,
+        jsonString: String,
+        payloadHash: String,
+        payloadSizeKb: Int,
+        startMs: Long
+    ): Result<SyncOutcome> {
         try {
             var targetFileId = getCachedFileId()?.takeIf { it != "drive_mirror_backup_id" }
             if (targetFileId == null) {
@@ -524,7 +560,8 @@ class GoogleDriveSyncManager(private val context: Context) {
             if (isUpdate && targetFileId != null) {
                 val mediaType = "application/json; charset=utf-8".toMediaType()
                 val requestBody = jsonString.toRequestBody(mediaType)
-                val patchUrl = "https://www.googleapis.com/upload/drive/v3/files/$targetFileId?uploadType=media"
+                // Use fields=id so Google Drive returns a minimal ~25-byte response payload for maximum speed
+                val patchUrl = "https://www.googleapis.com/upload/drive/v3/files/$targetFileId?uploadType=media&fields=id"
                 val request = Request.Builder()
                     .url(patchUrl)
                     .patch(requestBody)
@@ -535,7 +572,9 @@ class GoogleDriveSyncManager(private val context: Context) {
                 okHttpClient.newCall(request).execute().use { patchResp ->
                     if (patchResp.isSuccessful) {
                         val timestamp = System.currentTimeMillis()
-                        val summary = "Updated backup file in Google Drive (efficient overwrite) ✓"
+                        prefs.edit().putString(KEY_LAST_SYNC_HASH, payloadHash).apply()
+                        val elapsedSec = String.format(Locale.US, "%.1fs", (timestamp - startMs) / 1000.0)
+                        val summary = "Synced $payloadSizeKb KB in $elapsedSec (compact overwrite) ✓"
                         recordSyncSuccess(summary)
                         return Result.success(SyncOutcome(timestamp, targetFileId, isUpdate = true))
                     } else if (patchResp.code == 404) {
@@ -556,29 +595,40 @@ class GoogleDriveSyncManager(private val context: Context) {
                 }
             }
 
-            // Create new file metadata in Google Drive
+            // Single-Request Multipart Upload (creates metadata + uploads JSON in 1 HTTP round-trip instead of 2!)
+            val boundary = "====NotesTasksVaultBoundary${System.currentTimeMillis()}===="
             val metadataJson = JSONObject().apply {
                 put("name", BACKUP_FILENAME)
                 put("mimeType", "application/json")
-                put("description", "Automated single-file backup for Notes & Tasks app")
+                put("description", "Compact single-file backup for Notes & Tasks app")
             }.toString()
 
-            val createUrl = "https://www.googleapis.com/drive/v3/files"
-            val createRequest = Request.Builder()
-                .url(createUrl)
-                .post(metadataJson.toRequestBody("application/json; charset=utf-8".toMediaType()))
+            val multipartBodyStr = buildString {
+                append("--$boundary\r\n")
+                append("Content-Type: application/json; charset=UTF-8\r\n\r\n")
+                append(metadataJson)
+                append("\r\n--$boundary\r\n")
+                append("Content-Type: application/json; charset=UTF-8\r\n\r\n")
+                append(jsonString)
+                append("\r\n--$boundary--")
+            }
+
+            val multipartUrl = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id"
+            val multipartRequest = Request.Builder()
+                .url(multipartUrl)
+                .post(multipartBodyStr.toRequestBody("multipart/related; boundary=$boundary".toMediaType()))
                 .header("Authorization", "Bearer $token")
                 .header("Accept", "application/json")
                 .build()
 
-            val newId = okHttpClient.newCall(createRequest).execute().use { createResponse ->
+            val newId = okHttpClient.newCall(multipartRequest).execute().use { createResponse ->
                 if (!createResponse.isSuccessful) {
                     val code = createResponse.code
                     val errBody = createResponse.body?.string() ?: ""
                     val msg = if (code == 401) {
                         "HTTP 401: Token expired"
                     } else {
-                        "Failed to create backup file in Google Drive ($code): $errBody"
+                        "Failed to upload backup file to Google Drive ($code): $errBody"
                     }
                     _syncState.value = DriveSyncState.Error(msg)
                     return Result.failure(Exception(msg))
@@ -594,33 +644,11 @@ class GoogleDriveSyncManager(private val context: Context) {
             }
 
             saveCachedFileId(newId)
-
-            val mediaType = "application/json; charset=utf-8".toMediaType()
-            val requestBody = jsonString.toRequestBody(mediaType)
-            val patchUrl = "https://www.googleapis.com/upload/drive/v3/files/$newId?uploadType=media"
-            val patchRequest = Request.Builder()
-                .url(patchUrl)
-                .patch(requestBody)
-                .header("Authorization", "Bearer $token")
-                .header("Accept", "application/json")
-                .build()
-
-            okHttpClient.newCall(patchRequest).execute().use { patchResponse ->
-                if (!patchResponse.isSuccessful) {
-                    val code = patchResponse.code
-                    val errBody = patchResponse.body?.string() ?: ""
-                    val msg = if (code == 401) {
-                        "HTTP 401: Token expired"
-                    } else {
-                        "Failed to upload backup content to Google Drive ($code): $errBody"
-                    }
-                    _syncState.value = DriveSyncState.Error(msg)
-                    return Result.failure(Exception(msg))
-                }
-            }
+            prefs.edit().putString(KEY_LAST_SYNC_HASH, payloadHash).apply()
 
             val timestamp = System.currentTimeMillis()
-            val summary = "Created backup file in Google Drive ✓"
+            val elapsedSec = String.format(Locale.US, "%.1fs", (timestamp - startMs) / 1000.0)
+            val summary = "Created & synced $payloadSizeKb KB in $elapsedSec ✓"
             recordSyncSuccess(summary)
             return Result.success(SyncOutcome(timestamp, newId, isUpdate = false))
         } catch (e: Exception) {

@@ -95,6 +95,21 @@ class NotesTasksViewModel(application: Application) : AndroidViewModel(applicati
         prefs.edit().putBoolean("pref_performance_mode", enabled).apply()
     }
 
+    // Grid vs List View Mode (persisted in SharedPreferences, toggled from top bar button)
+    private val _isGridView = MutableStateFlow(prefs.getBoolean("pref_is_grid_view", false))
+    val isGridView: StateFlow<Boolean> = _isGridView.asStateFlow()
+
+    fun toggleGridView() {
+        val next = !_isGridView.value
+        _isGridView.value = next
+        prefs.edit().putBoolean("pref_is_grid_view", next).apply()
+    }
+
+    fun setGridView(isGrid: Boolean) {
+        _isGridView.value = isGrid
+        prefs.edit().putBoolean("pref_is_grid_view", isGrid).apply()
+    }
+
     // Custom Tags
     val allTags: StateFlow<List<TagEntity>> = repository.allTags
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -300,7 +315,7 @@ class NotesTasksViewModel(application: Application) : AndroidViewModel(applicati
     }.flowOn(Dispatchers.Default)
      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Filtered Notes (Fast in-memory filtering, zero stutter)
+    // Filtered Regular Notes (Excludes Shared Links so Notes and Shared Links are strictly separate)
     val notesList: StateFlow<List<NoteEntity>> = combine(
         allNotes,
         _selectedFolder,
@@ -310,12 +325,13 @@ class NotesTasksViewModel(application: Application) : AndroidViewModel(applicati
     ) { notes, folder, filter, query, tagFilter ->
         val folderFiltered = if (folder != null) {
             when {
-                folder.id == FolderEntity.COMPLETED_TASKS_FOLDER_ID -> emptyList() // No notes in completed tasks folder
-                folder.id == FolderEntity.SHARED_LINKS_FOLDER_ID -> notes.filter { FolderEntity.isSharedLinksFamilyId(it.folderId) }
-                else -> notes.filter { it.folderId == folder.id }
+                folder.id == FolderEntity.COMPLETED_TASKS_FOLDER_ID -> emptyList()
+                FolderEntity.isSharedLinksFamilyId(folder.id) -> emptyList() // Shared links have their own dedicated section
+                else -> notes.filter { it.folderId == folder.id && !FolderEntity.isSharedLinksFamilyId(it.folderId) }
             }
         } else {
-            notes
+            // In All Vault Items / All Notes, only include regular notes (not Shared Links)
+            notes.filter { !FolderEntity.isSharedLinksFamilyId(it.folderId) }
         }
         val queryFiltered = if (query.isNotBlank()) {
             folderFiltered.filter {
@@ -333,6 +349,45 @@ class NotesTasksViewModel(application: Application) : AndroidViewModel(applicati
         }
         when (filter) {
             SearchFilter.ALL, SearchFilter.NOTES, SearchFilter.FOLDERS -> tagFiltered
+            SearchFilter.STARRED -> tagFiltered.filter { it.isStarred }
+            else -> emptyList()
+        }
+    }.flowOn(Dispatchers.Default)
+     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Filtered Shared Links (Dedicated separate section in All Vault Items, Links filter, Starred, or Shared Links folders)
+    val sharedLinksList: StateFlow<List<NoteEntity>> = combine(
+        allNotes,
+        _selectedFolder,
+        _activeFilter,
+        _searchQuery,
+        _selectedTagFilter
+    ) { notes, folder, filter, query, tagFilter ->
+        val folderFiltered = if (folder != null) {
+            when {
+                folder.id == FolderEntity.SHARED_LINKS_FOLDER_ID -> notes.filter { FolderEntity.isSharedLinksFamilyId(it.folderId) }
+                FolderEntity.isSharedLinksSubfolderId(folder.id) -> notes.filter { it.folderId == folder.id }
+                else -> emptyList() // Regular folders don't show shared links section
+            }
+        } else {
+            notes.filter { FolderEntity.isSharedLinksFamilyId(it.folderId) }
+        }
+        val queryFiltered = if (query.isNotBlank()) {
+            folderFiltered.filter {
+                it.title.contains(query, ignoreCase = true) ||
+                it.content.contains(query, ignoreCase = true) ||
+                it.tags.contains(query, ignoreCase = true)
+            }
+        } else {
+            folderFiltered
+        }
+        val tagFiltered = if (!tagFilter.isNullOrBlank()) {
+            queryFiltered.filter { it.tags.contains(tagFilter, ignoreCase = true) }
+        } else {
+            queryFiltered
+        }
+        when (filter) {
+            SearchFilter.ALL, SearchFilter.LINKS, SearchFilter.FOLDERS -> tagFiltered
             SearchFilter.STARRED -> tagFiltered.filter { it.isStarred }
             else -> emptyList()
         }
@@ -387,6 +442,14 @@ class NotesTasksViewModel(application: Application) : AndroidViewModel(applicati
         _performanceMode
     ) { notes, perfMode ->
         notes.map { it.toUiItem(perfMode) }
+    }.flowOn(Dispatchers.Default)
+     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val sharedLinkUiItems: StateFlow<List<NoteUiItem>> = combine(
+        sharedLinksList,
+        _performanceMode
+    ) { links, perfMode ->
+        links.map { it.toUiItem(perfMode) }
     }.flowOn(Dispatchers.Default)
      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -794,7 +857,7 @@ class NotesTasksViewModel(application: Application) : AndroidViewModel(applicati
             if (googleDriveSyncManager.isConnected() && googleDriveSyncManager.autoSyncOnOpen.value) {
                 try {
                     val json = repository.exportDatabaseToJson()
-                    googleDriveSyncManager.uploadBackupJson(json)
+                    googleDriveSyncManager.uploadBackupJson(json, forceUpload = false)
                 } catch (_: Exception) {
                     // Silent background sync
                 }
@@ -928,7 +991,6 @@ class NotesTasksViewModel(application: Application) : AndroidViewModel(applicati
                 )
                 val folderIds = listOf(targetFolder.id, FolderEntity.SHARED_LINKS_FOLDER_ID).distinct()
                 val noteId = repository.saveNoteWithFolders(initialNote, folderIds)
-                selectFolder(targetFolder)
                 NotesTasksAppWidget.notifyWidgetUpdate(getApplication())
 
                 // If network metadata wasn't finished when the user tapped the tag, enrich in background
@@ -1062,7 +1124,9 @@ private fun NoteEntity.toUiItem(isPerformanceMode: Boolean): NoteUiItem {
         it.removePrefix("https://").removePrefix("http://").take(42)
     }
 
-    val rawTitle = title.ifBlank { if (isSharedLink) "Shared Link" else "Untitled Note" }
+    val rawTitle = LinkMetadataExtractor.decodeHtmlEntities(
+        title.ifBlank { if (isSharedLink) "Shared Link" else "Untitled Note" }
+    )
     val displayTitle = LEADING_TITLE_MARKDOWN_REGEX.replace(rawTitle.trim(), "").trim().ifBlank { rawTitle }
 
     val cleanPreview = if (content.isNotBlank()) {
@@ -1078,7 +1142,8 @@ private fun NoteEntity.toUiItem(isPerformanceMode: Boolean): NoteUiItem {
                 }
             }
         }
-        val snippet = if (text.length > 280) text.substring(0, 280) else text
+        val decodedText = LinkMetadataExtractor.decodeHtmlEntities(text)
+        val snippet = if (decodedText.length > 280) decodedText.substring(0, 280) else decodedText
         if (isPerformanceMode) snippet.trim() else CLEAN_MARKDOWN_REGEX.replace(snippet, "").trim()
     } else ""
 

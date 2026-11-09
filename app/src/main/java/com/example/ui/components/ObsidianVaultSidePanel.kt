@@ -239,6 +239,12 @@ fun ObsidianVaultSidePanel(
         tasksByFolder[null] ?: emptyList()
     }
 
+    val regularNotesCount = remember(allNotes) {
+        allNotes.count { !FolderEntity.isSharedLinksFamilyId(it.folderId) }
+    }
+    val sharedLinksCount = remember(allNotes) {
+        allNotes.count { FolderEntity.isSharedLinksFamilyId(it.folderId) }
+    }
     val activeTasksCount = remember(allTasks) {
         allTasks.count { !it.task.isCompleted }
     }
@@ -309,7 +315,7 @@ fun ObsidianVaultSidePanel(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "${customFolders.size} folders • ${allNotes.size} notes • ${allTasks.size} tasks",
+                            text = "${customFolders.size} folders • $regularNotesCount notes • $sharedLinksCount links • ${allTasks.size} tasks",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -544,12 +550,29 @@ fun ObsidianVaultSidePanel(
                             icon = Icons.Default.Description,
                             iconTint = MaterialTheme.colorScheme.secondary,
                             label = "All Notes",
-                            count = allNotes.size,
+                            count = regularNotesCount,
                             isSelected = isSelected,
                             testTag = "nav_view_notes",
                             onClick = {
                                 onSelectFolder(null)
                                 onSelectFilter(SearchFilter.NOTES)
+                                onCloseDrawer()
+                            }
+                        )
+                    }
+
+                    item(key = "view_links") {
+                        val isSelected = selectedFolder == null && activeFilter == SearchFilter.LINKS
+                        ObsidianNavRow(
+                            icon = Icons.Default.Link,
+                            iconTint = MaterialTheme.colorScheme.primary,
+                            label = "All Shared Links",
+                            count = sharedLinksCount,
+                            isSelected = isSelected,
+                            testTag = "nav_view_links",
+                            onClick = {
+                                onSelectFolder(null)
+                                onSelectFilter(SearchFilter.LINKS)
                                 onCloseDrawer()
                             }
                         )
@@ -576,7 +599,7 @@ fun ObsidianVaultSidePanel(
                         val isSelected = selectedFolder == null && activeFilter == SearchFilter.STARRED
                         ObsidianNavRow(
                             icon = Icons.Default.Star,
-                            iconTint = Color(0xFFF59E0B),
+                            iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
                             label = "Starred",
                             count = starredCount,
                             isSelected = isSelected,
@@ -593,7 +616,7 @@ fun ObsidianVaultSidePanel(
                         val isSelected = selectedFolder == null && activeFilter == SearchFilter.REMINDERS
                         ObsidianNavRow(
                             icon = Icons.Default.Alarm,
-                            iconTint = Color(0xFFEC4899),
+                            iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
                             label = "Reminders",
                             count = remindersCount,
                             isSelected = isSelected,
@@ -677,7 +700,7 @@ fun ObsidianVaultSidePanel(
                                     Icon(
                                         imageVector = Icons.Default.Link,
                                         contentDescription = null,
-                                        tint = Color(0xFF2563EB),
+                                        tint = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(modifier = Modifier.width(9.dp))
@@ -692,13 +715,13 @@ fun ObsidianVaultSidePanel(
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Surface(
                                         shape = RoundedCornerShape(4.dp),
-                                        color = Color(0xFF2563EB).copy(alpha = 0.14f)
+                                        color = MaterialTheme.colorScheme.surfaceVariant
                                     ) {
                                         Text(
                                             text = "14 apps",
                                             fontSize = 9.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF2563EB),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                                         )
                                     }
@@ -813,7 +836,7 @@ fun ObsidianVaultSidePanel(
                         val isSelected = selectedFolder?.id == FolderEntity.COMPLETED_TASKS_FOLDER_ID
                         ObsidianNavRow(
                             icon = Icons.Default.CheckCircle,
-                            iconTint = Color(0xFF10B981),
+                            iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
                             label = "Completed Tasks",
                             count = completedCount,
                             isSelected = isSelected,
